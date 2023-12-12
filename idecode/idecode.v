@@ -72,7 +72,7 @@ controller u_controller(
     .itype(itype),
     .opcode(opcode),
     .func(func),
-    .rt(rt),
+    .rt(inst[20:16]),  // make it zero may influence the result in some instructions
     .rs_sel(rs_sel),
     .rt_sel(rt_sel),
     .alu_op(alu_op),

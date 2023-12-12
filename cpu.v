@@ -100,7 +100,20 @@ wire [31:0]     mem_rdata1;
 wire  [2:0]    mem_rf_wsel;
 wire  [4:0]         mem_rd;  // rd register
 wire            mem_rf_nwe;
+reg           hazard_stall;
 
+initial begin
+    hazard_stall = 1'b0;
+end
+
+always @(*) begin
+    if(id_ex_hazard_mem) begin
+        hazard_stall = 1'b1;
+    end
+    else begin
+        hazard_stall = 1'b0;
+    end
+end
 
 
 // 数据相关 R-R 
@@ -124,6 +137,7 @@ assign ram_out = data_sram_rdata;
 if_id u_if_id(
     .clk(clk),
     .resetn(resetn),
+    .hazard_stall(hazard_stall),
     .jmp(jmp),
     .pc(pc),
     .inst(inst),
@@ -133,8 +147,7 @@ if_id u_if_id(
 
 ifetch u_ifetch(
     .clk(clk),
-    .stop(id_ex_hazard_mem),
-    .ori_pc(if_pc),
+    .hazard_stall(hazard_stall),
     .rst_n(resetn),
     .dest(dest),
     .jmp(jmp),
@@ -173,6 +186,7 @@ forward u_forward(
     .clk(clk),
     .resetn(resetn),
     .pc(if_pc),
+    .ex_pc(ex_pc),
     .imm(imm),
     .alu_op(alu_op),
     .npc_op(npc_op),
@@ -181,6 +195,8 @@ forward u_forward(
     .id_rdata1(id_rdata1),
     .alu_out(alu_out),
     .ram_out(ram_out),
+    .id_rf_wsel(id_rf_wsel),
+    .ex_rf_wsel(ex_rf_wsel),
     .ex_rdata1(ex_rdata1),
     .ex_alu_out(ex_alu_out),
     .id_ex_hazard_mem(id_ex_hazard_mem),
@@ -190,8 +206,8 @@ forward u_forward(
     .id_ex_rt_hazard_reg(id_ex_rt_hazard_reg),
     .id_mem_rt_hazard_mem(id_mem_rt_hazard_mem),
     .id_mem_rt_hazard_reg(id_mem_rt_hazard_reg),
-    .id_is_movz(id_is_movz),
-    .ex_is_movz(ex_is_movz),
+    // .id_is_movz(id_is_movz),
+    // .ex_is_movz(ex_is_movz),
     .out_rdata1(out_rdata1),
     .out_rdata2(out_rdata2),
     .dest(dest),
@@ -305,13 +321,13 @@ rf_mux u_rf_mux(
 );
 
 assign data_sram_en    = 1'b1;
-assign data_sram_wen   = {4{ex_ram_we}};
-assign data_sram_addr  = ex_alu_out;
-assign data_sram_wdata = ex_rdata2;
+assign data_sram_wen   = {4{id_ram_we}};
+assign data_sram_addr  = (alu_out[31:28] >= 4'h8 && alu_out[31:28] < 4'hC) ? {3'b0, alu_out[28:0]}: alu_out;
+assign data_sram_wdata = id_rdata2;
 
 assign inst_sram_en    = 1'b1;
 assign inst_sram_wen   = {4{1'b0}};
-assign inst_sram_addr  = npc;
+assign inst_sram_addr  = (npc[31:28] >= 4'h8 && npc[31:28] < 4'hC) ? {3'b0, npc[28:0]}: npc;
 assign inst_sram_wdata = 32'b0;
 
 assign debug_wb_pc = mem_pc;

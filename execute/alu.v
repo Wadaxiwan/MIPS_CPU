@@ -92,8 +92,8 @@ module alu (
     assign {resub_cout, resub_result}  = B - A;
     assign {resub_cin_cout, resub_cin_result}  = B - A - Cin;
     assign eq_b_result = B;
-    assign sra_result = $signed(A) >>> B[4:0];
-    assign srl_result = (A >> B[4:0]);
+    assign sra_result = $signed(B) >>> A[4:0];  // rt >>> rs / sa
+    assign srl_result = (B >> A[4:0]);
     assign or_result = A | B;
     assign and_result = A & B;
     assign xnor_result = ~(A ^ B);
@@ -101,7 +101,7 @@ module alu (
     assign nor_result = ~(A | B);
     assign nand_result = ~(A & B);
     assign zero_result = 32'b0;
-    assign slt_result = (A < B) ? 32'b1 : 32'b0;
+    assign slt_result = ($signed(A) < $signed(B)) ? 32'b1 : 32'b0;
     assign sltu_result = ({1'b0, A} < {1'b0, B}) ? 32'b1 : 32'b0;
     assign sll_result = (B << A[4:0]);
     assign lui_result = B;

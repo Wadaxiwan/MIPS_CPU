@@ -1,31 +1,15 @@
 module ifetch(
     input                  clk,
     input                rst_n,
-    input                 stop,
+    input         hazard_stall,
     input  [31:0]         dest,
-    input  [31:0]       ori_pc,
     input                  jmp,
     input  [2:0]            op,
     output [31:0]           pc,
     output [31:0]          npc
 );
 
-wire [31:0]          pc_addr;
-reg                   hazard;
-
-initial begin
-    hazard = 1'b0;
-end
-
-always @(*) begin
-    if(stop) begin
-        hazard = 1'b1;
-    end
-    else begin
-        hazard = 1'b0;
-    end
-end
-
+reg [31:0] saved_pc;
 
 npc u_npc(
     .pc(pc),
@@ -37,11 +21,20 @@ npc u_npc(
 
 pc u_pc(
     .clk(clk),
+    .hazard_stall(hazard_stall),
+    .saved_pc(saved_pc),
     .rst_n(rst_n),
     .din(npc),
-    .pc(pc_addr)
+    .pc(pc)
 );
 
-assign pc = hazard == 1'b1 ? ori_pc : pc_addr;
+always @(posedge clk) begin
+    if (rst_n == 1'b0) begin
+        saved_pc <= 32'h0;
+    end else begin
+        saved_pc <= pc;
+    end
+end
+
 
 endmodule
