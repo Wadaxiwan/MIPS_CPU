@@ -48,6 +48,7 @@ module forward(
     output reg [31:0]       out_rdata1,
     output reg [31:0]       out_rdata2,
     output [31:0]                 dest,
+    output                 cond_branch,
     output                         jmp  // ÊÇ·ñÌø×ª
 );
 
@@ -148,6 +149,9 @@ assign dest = ({32{alu_op == `BEQ}} & (pc4 + imm)) |
              ({32{alu_op == `BLTZ}} & (pc4 + imm)) |
              ({32{npc_op == `NPC_J}} & ({pc4[31:28], imm[27:0]})) |
              ({32{npc_op == `NPC_JR}} & out_rdata1) ;
+
+assign cond_branch = (alu_op == `BEQ) | (alu_op == `BNE) | (alu_op == `BGEZ) | 
+                     (alu_op == `BGTZ) | (alu_op == `BLEZ) | (alu_op == `BLTZ) ;
 
 endmodule
 

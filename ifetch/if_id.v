@@ -5,6 +5,7 @@ module if_id(
         input             jmp,
         input             hazard_stall,
         input             exe_stall,
+        input             cond_exe_stall,
         input    [31:0]   pc,
         input    [31:0]   inst,
         output   [31:0]   if_pc,
@@ -21,7 +22,7 @@ end
 
 
 always @(posedge clk) begin
-    if (resetn == 1'b0) begin
+    if (resetn == 1'b0 | cond_exe_stall) begin
         reg_if_pc <= 32'h0;
         reg_if_inst <= 32'h0;
     end

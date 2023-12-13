@@ -1,6 +1,8 @@
 module mem_wb(
     input                            clk,  // clock
     input                         resetn,  // resetn
+    input       [5:0]          ex_opcode,
+    input       [5:0]            ex_func,
     input       [31:0]             ex_pc,  // pc data from ex/mem seg reg
     input       [31:0]        ex_alu_out,  // alu out from ex/mem seg reg
     input       [31:0]           ram_out,  // ram out from ram seg reg
@@ -16,6 +18,8 @@ module mem_wb(
     output reg  [2:0]        mem_rf_wsel,  // regfile write sel to mem/wb seg reg
     output reg                mem_rf_nwe,  // rd write enable to mem/wb seg reg
     output reg  [4:0]             mem_rd,   // rd register to mem/wb seg reg
+    output reg  [5:0]           mem_func,   
+    output reg  [5:0]         mem_opcode,   
     output reg  [63:0]      mem_hilo_out   // hilo out to mem/wb seg reg
 );
 
@@ -29,6 +33,8 @@ initial begin
     mem_rf_nwe = 1'b0;
     mem_rd = 5'h0;
     mem_hilo_out = 64'h0;
+    mem_opcode = 6'h0;
+    mem_func = 6'h0;
 end
 
 always @(posedge clk) begin
@@ -41,6 +47,8 @@ always @(posedge clk) begin
         mem_rf_nwe <= 1'b0;
         mem_rd <= 5'h0;
         mem_hilo_out <= 64'h0;
+        mem_opcode <= 6'h0;
+        mem_func <= 6'h0;
     end
     else begin
         mem_pc <= ex_pc;
@@ -50,7 +58,9 @@ always @(posedge clk) begin
         mem_rf_wsel <= ex_rf_wsel; 
         mem_rf_nwe <= ex_rf_nwe;     
         mem_rd <= ex_rd;    
-        mem_hilo_out <= ex_hilo_out;    
+        mem_hilo_out <= ex_hilo_out;
+        mem_opcode <= ex_opcode;
+        mem_func <= ex_func;    
     end
 end
 

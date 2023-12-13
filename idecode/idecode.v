@@ -38,7 +38,9 @@ module idecode(
     output                      is_ram,  // 当前指令是否访存
     output [2:0]                ram_op,  // 当前指令访存行为
     output                       of_op,  // 当前指令是否需要overflow判断
-    output [1:0]               hilo_we   // HILO写使能信号
+    output [1:0]               hilo_we,   // HILO写使能信号
+    output [3:0]               ram_wen,
+    output [1:0]              ram_sign
 );
 
 wire [4:0]                 rs;  //  源寄存器1编号
@@ -79,6 +81,8 @@ controller u_controller(
     .alu_op(alu_op),
     .npc_op(npc_op),
     .rf_we(rf_twe),
+    .ram_wen(ram_wen),
+    .ram_sign(ram_sign),
     .rf_wsel(rf_wsel),
     .sext_op(sext_op),
     .ram_we(ram_we),

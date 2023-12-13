@@ -59,7 +59,10 @@ wire                rf_nwe;
 wire                is_ram;
 wire [1:0]         hilo_we;
 wire  [63:0]      hilo_out;
-
+wire           cond_branch;
+wire        cond_exe_stall;
+wire   [3:0]       ram_wen;
+wire   [1:0]      ram_sign;
 
 wire  [31:0]         if_pc;
 wire  [31:0]           npc;
@@ -81,10 +84,15 @@ wire  [5:0]      id_opcode;
 wire             id_rf_nwe;
 wire             id_is_ram;
 wire            id_is_movz;
+wire   [3:0]    id_ram_wen;
+wire   [1:0]   id_ram_sign;
 wire  [31:0]    out_rdata1;
 wire  [31:0]    out_rdata2;
 
-
+wire   [3:0]    ex_ram_wen;
+wire   [1:0]   ex_ram_sign;
+wire  [5:0]        ex_func;  
+wire  [5:0]      ex_opcode;  
 wire [31:0]          ex_pc;
 wire [31:0]     ex_alu_out;
 wire  [2:0]     ex_rf_wsel;  // rd write sel generate by controller
@@ -96,7 +104,12 @@ wire             ex_rf_nwe;
 wire             ex_is_ram;
 wire            ex_is_movz;
 wire [63:0]    ex_hilo_out;
+wire [31:0]      s_ram_out;
 
+wire  [3:0]    mem_ram_wen;
+wire  [1:0]   mem_ram_sign;
+wire  [5:0]       mem_func;  
+wire  [5:0]     mem_opcode; 
 wire [31:0]         mem_pc;
 wire [31:0]    mem_alu_out;
 wire [31:0]    mem_ram_out;
@@ -138,13 +151,13 @@ wire   id_mem_rt_hazard_reg = !ex_is_ram & ex_rf_nwe & ex_rd == if_inst[20:16] &
 
 
 assign inst = inst_sram_rdata;
-assign ram_out = data_sram_rdata;
 
 if_id u_if_id(
     .clk(clk),
     .resetn(resetn),
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
+    .cond_exe_stall(cond_exe_stall),
     .jmp(jmp),
     .pc(pc),
     .inst(inst),
@@ -156,12 +169,14 @@ ifetch u_ifetch(
     .clk(clk),
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
+    .cond_branch(cond_branch),
     .rst_n(resetn),
     .dest(dest),
     .jmp(jmp),
     .op(npc_op),
     .pc(pc),
-    .npc(npc)
+    .npc(npc),
+    .cond_exe_stall(cond_exe_stall)
 );
 
 
@@ -186,7 +201,9 @@ idecode u_idecode(
     .opcode(opcode), 
     .itype(itype),
     .is_ram(is_ram),
-    .hilo_we(hilo_we)
+    .hilo_we(hilo_we),
+    .ram_wen(ram_wen),
+    .ram_sign(ram_sign)
     // .ram_op(ram_op),
     // .of_op(of_op)
 );
@@ -222,6 +239,7 @@ forward u_forward(
     .out_rdata1(out_rdata1),
     .out_rdata2(out_rdata2),
     .dest(dest),
+    .cond_branch(cond_branch),
     .jmp(jmp)
 );
 
@@ -236,6 +254,8 @@ id_ex u_id_ex(
     .imm(imm),
     .alu_op(alu_op),
     .ram_we(ram_we),
+    .ram_wen(ram_wen),
+    .ram_sign(ram_sign),
     .rf_wsel(rf_wsel),
     .rd(rd),
     .func(func),
@@ -262,7 +282,9 @@ id_ex u_id_ex(
     .id_rf_nwe(id_rf_nwe),
     .id_is_ram(id_is_ram),
     .id_is_movz(id_is_movz),
-    .id_hilo_we(id_hilo_we)
+    .id_hilo_we(id_hilo_we),
+    .id_ram_wen(id_ram_wen),
+    .id_ram_sign(id_ram_sign)
 );
 
 execute u_execute(
@@ -298,7 +320,11 @@ ex_mem u_ex_mem(
     .id_ram_we(id_ram_we),
     .id_rf_nwe(id_rf_nwe),
     .id_is_ram(id_is_ram),
+    .id_ram_wen(id_ram_wen),
+    .id_ram_sign(id_ram_sign),
     .id_is_movz(id_is_movz),
+    .id_opcode(id_opcode),
+    .id_func(id_func),
     .exe_stall(exe_stall),
     .ex_pc(ex_pc),
     .ex_alu_out(ex_alu_out),
@@ -310,7 +336,25 @@ ex_mem u_ex_mem(
     .ex_rf_nwe(ex_rf_nwe),
     .ex_is_ram(ex_is_ram),
     .ex_is_movz(ex_is_movz),
-    .ex_hilo_out(ex_hilo_out)
+    .ex_hilo_out(ex_hilo_out),
+    .ex_opcode(ex_opcode),
+    .ex_func(ex_func),
+    .ex_ram_wen(ex_ram_wen),
+    .ex_ram_sign(ex_ram_sign)
+);
+
+memory u_memory(
+    .ex_ram_wen(ex_ram_wen),
+    .ex_ram_sign(ex_ram_sign),
+    .ex_ram_addr(ex_alu_out[1:0]),
+    .id_ram_we(id_ram_we),
+    .id_ram_wen(id_ram_wen),
+    .id_ram_addr(alu_out[1:0]),
+    .data_sram_wen(data_sram_wen),
+    .ram_in(data_sram_rdata),
+    .ram_out(ram_out),
+    .s_ram_in(id_rdata2),
+    .s_ram_out(data_sram_wdata)
 );
 
 mem_wb u_mem_wb(
@@ -324,6 +368,10 @@ mem_wb u_mem_wb(
     .ex_rf_nwe(ex_rf_nwe),
     .ex_hilo_out(ex_hilo_out),
     .ex_rd(ex_rd),
+    .ex_opcode(ex_opcode),
+    .ex_func(ex_func),
+    // .ex_ram_wen(ex_ram_wen),
+    // .ex_ram_sign(ex_ram_sign),
     .mem_pc(mem_pc),
     .mem_alu_out(mem_alu_out),
     .mem_ram_out(mem_ram_out),
@@ -331,7 +379,11 @@ mem_wb u_mem_wb(
     .mem_rf_wsel(mem_rf_wsel),
     .mem_rf_nwe(mem_rf_nwe),
     .mem_rd(mem_rd),
-    .mem_hilo_out(mem_hilo_out)
+    .mem_hilo_out(mem_hilo_out),
+    .mem_opcode(mem_opcode),
+    .mem_func(mem_func)
+    // .mem_ram_wen(mem_ram_wen),
+    // .mem_ram_sign(mem_ram_sign)
 );
 
 rf_mux u_rf_mux(
@@ -345,9 +397,7 @@ rf_mux u_rf_mux(
 );
 
 assign data_sram_en    = 1'b1;
-assign data_sram_wen   = {4{id_ram_we}};
 assign data_sram_addr  = (alu_out[31:28] >= 4'h8 && alu_out[31:28] < 4'hC) ? {3'b0, alu_out[28:0]}: alu_out;
-assign data_sram_wdata = id_rdata2;
 
 assign inst_sram_en    = 1'b1;
 assign inst_sram_wen   = {4{1'b0}};

@@ -56,15 +56,19 @@
 `define EXT_J     3'b100
 `define EXT_L     3'b101
 `define EXT_I     3'b110
+
 `define ALUB_RT   2'b01
 `define ALUB_RS   2'b10
 `define ALUB_EXT  2'b11 
+
 `define RAM_B     3'b001
 `define RAM_BU    3'b010
 `define RAM_H     3'b011
 `define RAM_HU    3'b100
 `define RAM_W     3'b101
 
+`define RAM_SIGN   2'b01
+`define RAM_UNSIGN 2'b10
 
 module controller(
     input [2:0]          itype,
@@ -75,6 +79,8 @@ module controller(
     output [1:0]        rt_sel,
     output [4:0]        alu_op,
     output [2:0]        npc_op,
+    output [3:0]       ram_wen,  // 4bit is set means one word, 2bit is set means one half word, 1bit is set means one byte
+    output [1:0]      ram_sign,
     output               rf_we,
     output [2:0]       rf_wsel,
     output [1:0]       hilo_we,
@@ -151,6 +157,16 @@ assign sext_op = ({3{opcode == 6'b001111}} & `EXT_L) |
 assign ram_we = opcode[5:3] == 3'b101 ? 1'b1 : 1'b0;
 
 assign is_ram = opcode[5:3] == 3'b100 || opcode[5:3] == 3'b101;
+
+// 根据指令的类型决定读写存储器的位数
+assign ram_wen = ({4{opcode == 6'b100011 || opcode == 6'b101011}} & 4'b1111) |
+                 ({4{opcode == 6'b100000 || opcode == 6'b100100 || opcode == 6'b101000}} & 4'b0001) |
+                 ({4{opcode == 6'b100001 || opcode == 6'b100101 || opcode == 6'b101001}} & 4'b0011);
+
+// 决定读写符号位扩展的方式
+assign ram_sign = ({2{opcode == 6'b100000 || opcode == 6'b100001 || opcode == 6'b101000 || opcode == 6'b101001}} & `RAM_SIGN) |
+                  ({2{opcode == 6'b100100 || opcode == 6'b100101 }} & `RAM_UNSIGN);
+
 
 // 根据指令的类型决定ALU操作
 assign alu_op = ({5{ opcode == 6'b000000 && func == 6'b100000 }} & `ADD) |

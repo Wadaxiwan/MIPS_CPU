@@ -1,5 +1,3 @@
-
-
 module id_ex(
     input                        clk,   // clock
     input                     resetn,   // resetn
@@ -11,6 +9,8 @@ module id_ex(
     input       [31:0]         imm,     //  imm gen data
     input       [4:0]          alu_op,  // alu op generate by controller
     input                     ram_we,   // ram write enable generate by controller
+    input       [3:0]        ram_wen,   // ram read/write bit generate by controller
+    input       [1:0]       ram_sign,   // ram raad/write sign generate by controller
     input       [2:0]        rf_wsel,   // rd write sel generate by controller
     input       [4:0]             rd,   // rd reg addr generate by controller
     input       [5:0]           func,   // function code generate by controller
@@ -37,6 +37,8 @@ module id_ex(
     output reg             id_rf_nwe,  // rd write enable to id/ex pipe
     output reg             id_is_ram,  // the instruction is ram instruction to id/ex pipe
     output reg            id_is_movz,   // the instruction is movz instruction to id/ex pipe
+    output reg  [3:0]     id_ram_wen,
+    output reg  [1:0]    id_ram_sign,
     output reg  [1:0]     id_hilo_we   //  reg1(rs) data to id/ex pipe
 );
 
@@ -59,6 +61,8 @@ initial begin
     id_is_ram = 1'b0;
     id_is_movz = 1'b0;
     id_hilo_we = 2'h0;
+    id_ram_wen = 4'h0;
+    id_ram_sign = 2'h0;
 end
 
 always @(posedge clk) begin
@@ -80,6 +84,8 @@ always @(posedge clk) begin
         id_rdata1 <= 32'h0;
         id_rdata2 <= 32'h0;
         id_hilo_we <= 2'h0;
+        id_ram_wen <= 4'h0;
+        id_ram_sign <= 2'h0;
     end
     // save the data to id/ex pipe register
     else if(!exe_stall) begin
@@ -99,6 +105,8 @@ always @(posedge clk) begin
         id_rdata1 <= rdata1;
         id_rdata2 <= rdata2;
         id_hilo_we <= hilo_we;
+        id_ram_wen <= ram_wen;
+        id_ram_sign <= ram_sign;
     end
 end
 
