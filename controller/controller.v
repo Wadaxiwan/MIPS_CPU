@@ -7,44 +7,49 @@
 `define ADD       5'b00001
 `define ADDU      5'b00010
 `define SUB       5'b00011
-`define SUBU      5'b00100
-`define RESUB     5'b00101
-`define RESUB_Cin 5'b00110  
-`define BEQ       5'b00111
-`define EQ_B      5'b01000
-`define SRA       5'b01001
-`define SRL       5'b01010
-`define OR        5'b01011
-`define AND       5'b01100
-`define XNOR      5'b01101 
-`define XOR       5'b01110
-`define NAND      5'b01111 
-`define ZERO      5'b10000    
-`define SLT       5'b10001 
-`define SLL       5'b10010 
-`define NOR       5'b10011 
-`define LUI       5'b10100 
-`define MULT      5'b10110 
-`define MULTU     5'b10110 
-`define DIV       5'b10111
-`define DIVU      5'b10111 
-`define BNE       5'b11000 
-`define BGEZ      5'b11001 
-`define BGTZ      5'b11010 
-`define BLEZ      5'b11011 
-`define BLTZ      5'b11100
-`define LI        5'b11101 
-`define SLTU      5'b11110 
+`define SUBU      5'b00100 
+`define EQ_B      5'b00101
+`define SRA       5'b00110
+`define SRL       5'b00111
+`define OR        5'b01000
+`define AND       5'b01001
+`define XNOR      5'b01010 
+`define XOR       5'b01011
+`define NAND      5'b01100 
+`define ZERO      5'b01101    
+`define SLT       5'b01110 
+`define SLL       5'b01111 
+`define NOR       5'b10000 
+`define LUI       5'b10001 
+`define MULT      5'b10010 
+`define MULTU     5'b10011 
+`define DIV       5'b10100
+`define DIVU      5'b10101 
+`define BEQ       5'b10110
+`define BNE       5'b10111
+`define BGEZ      5'b11000 
+`define BGTZ      5'b11001 
+`define BLEZ      5'b11010 
+`define BLTZ      5'b11011
+`define SLTU      5'b11100 
 `define NPC_PC4   3'b000
 `define NPC_B     3'b010
 `define NPC_J     3'b011   
-`define NPC_JR    3'b100   
+`define NPC_JR    3'b100  
+
+/* rf_wsel */
 `define WB_ALU    3'b001
 `define WB_RS     3'b010 
 `define WB_RAM    3'b011
 `define WB_HI     3'b100
 `define WB_LO     3'b101
 `define WB_PC8    3'b110
+
+/* rf_rsel */
+`define RB_HI     2'b10
+`define RB_LO     2'b01
+
+
 `define EXT_Z     3'b001
 `define EXT_S     3'b010
 `define EXT_B     3'b011
@@ -72,6 +77,7 @@ module controller(
     output [2:0]        npc_op,
     output               rf_we,
     output [2:0]       rf_wsel,
+    output [1:0]       hilo_we,
     output [2:0]       sext_op,
     output              ram_we,
     output              is_ram,
@@ -113,6 +119,10 @@ assign rf_wsel = ({3{opcode == 6'b000000 && (func[5:2] != 4'b0100 && func != 6'b
                  ({3{opcode[5:3] == 6'b001}} & `WB_ALU) |                      // R-Imm ALU
                  ({3{opcode[5:3] == 6'b100}} & `WB_RAM);                       // Load
 
+// 根据指令的类型决定是否写特殊寄存器堆
+assign hilo_we = ({2{opcode == 6'b000000 && func == 6'b010001}}  & `RB_HI) |   // MFHI
+                 ({2{opcode == 6'b000000 && func == 6'b010011}}  & `RB_LO) |
+                 ({2{alu_op == `MULT || alu_op == `MULTU || alu_op == `DIV || alu_op == `DIVU}} & 2'b11 );
 
 // 根据指令的类型决定ALU操作数的来源
 assign rs_sel = ({2{opcode == 6'b000000 && func == 6'b000000}} & `ALUB_EXT) | 
@@ -145,6 +155,8 @@ assign is_ram = opcode[5:3] == 3'b100 || opcode[5:3] == 3'b101;
 // 根据指令的类型决定ALU操作
 assign alu_op = ({5{ opcode == 6'b000000 && func == 6'b100000 }} & `ADD) |
                 ({5{ opcode == 6'b000000 && func == 6'b100001 }} & `ADDU) |
+                ({5{ opcode == 6'b000000 && func == 6'b010001 }} & `ADD) |
+                ({5{ opcode == 6'b000000 && func == 6'b010011 }} & `ADD) |
                 ({5{ opcode == 6'b001000 }} & `ADD) |
                 ({5{ opcode == 6'b001001 }} & `ADDU) |
                 ({5{ opcode == 6'b000000 && func == 6'b100010 }} & `SUB) |

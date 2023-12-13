@@ -37,7 +37,8 @@ module idecode(
     output [2:0]                 itype,  // 当前译码指令的指令类型
     output                      is_ram,  // 当前指令是否访存
     output [2:0]                ram_op,  // 当前指令访存行为
-    output                       of_op   // 当前指令是否需要overflow判断
+    output                       of_op,  // 当前指令是否需要overflow判断
+    output [1:0]               hilo_we   // HILO写使能信号
 );
 
 wire [4:0]                 rs;  //  源寄存器1编号
@@ -83,6 +84,7 @@ controller u_controller(
     .ram_we(ram_we),
     .is_ram(is_ram),
     .ram_op(ram_op),
+    .hilo_we(hilo_we),
     .of_op(of_op)
 );
 

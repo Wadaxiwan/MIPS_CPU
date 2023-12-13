@@ -19,7 +19,9 @@ module id_ex(
     input                     rf_nwe,   // rd write enable generate by controller
     input                     is_ram,   // the instruction is ram instruction
     input                    is_movz,   // the instruction is movz instruction
-    input           id_ex_hazard_mem,   // id/ex hazard 
+    input               hazard_stall,   // id/ex hazard 
+    input                  exe_stall,   // ex/mem stall
+    input       [1:0]        hilo_we,   // hilo write enable generate by controller
     output reg  [31:0]         id_pc,   // pc data to id/ex pipe
     output reg  [31:0]     id_rdata1,   //  reg1(rs) data to id/ex pipe
     output reg  [31:0]     id_rdata2,   //  reg2(rt) data to id/ex pipe
@@ -34,7 +36,8 @@ module id_ex(
     output reg  [5:0]      id_opcode,  //  operation code to id/ex pipe
     output reg             id_rf_nwe,  // rd write enable to id/ex pipe
     output reg             id_is_ram,  // the instruction is ram instruction to id/ex pipe
-    output reg            id_is_movz   // the instruction is movz instruction to id/ex pipe
+    output reg            id_is_movz,   // the instruction is movz instruction to id/ex pipe
+    output reg  [1:0]     id_hilo_we   //  reg1(rs) data to id/ex pipe
 );
 
 
@@ -55,11 +58,12 @@ initial begin
     id_rf_nwe = 1'b0;
     id_is_ram = 1'b0;
     id_is_movz = 1'b0;
+    id_hilo_we = 2'h0;
 end
 
 always @(posedge clk) begin
     // initial the id/ex pipe
-    if (resetn == 1'b0 | id_ex_hazard_mem) begin
+    if (resetn == 1'b0 | hazard_stall) begin
         id_pc <= 32'h0;
         id_rt_sel <= 2'h0;
         id_rs_sel <= 2'h0;  
@@ -75,9 +79,10 @@ always @(posedge clk) begin
         id_is_movz <= 1'b0;
         id_rdata1 <= 32'h0;
         id_rdata2 <= 32'h0;
+        id_hilo_we <= 2'h0;
     end
     // save the data to id/ex pipe register
-    else begin
+    else if(!exe_stall) begin
         id_pc <= if_pc;
         id_rt_sel <= rt_sel;
         id_rs_sel <= rs_sel;
@@ -93,6 +98,7 @@ always @(posedge clk) begin
         id_is_movz <= is_movz;
         id_rdata1 <= rdata1;
         id_rdata2 <= rdata2;
+        id_hilo_we <= hilo_we;
     end
 end
 

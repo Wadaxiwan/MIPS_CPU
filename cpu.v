@@ -56,14 +56,17 @@ wire [5:0]            func;
 wire [5:0]          opcode;  
 wire [2:0]           itype;  
 wire                rf_nwe;  
-wire               rf_nwef;
 wire                is_ram;
+wire [1:0]         hilo_we;
+wire  [63:0]      hilo_out;
+
 
 wire  [31:0]         if_pc;
 wire  [31:0]           npc;
 wire  [31:0]       if_inst;
 
 wire  [31:0]         id_pc;
+wire  [1:0]     id_hilo_we;
 wire  [31:0]     id_rdata1;  
 wire  [31:0]     id_rdata2;
 wire  [1:0]      id_rs_sel;  
@@ -92,6 +95,7 @@ wire             ex_ram_we;  // ram write enable generate by controller
 wire             ex_rf_nwe;
 wire             ex_is_ram;
 wire            ex_is_movz;
+wire [63:0]    ex_hilo_out;
 
 wire [31:0]         mem_pc;
 wire [31:0]    mem_alu_out;
@@ -99,8 +103,10 @@ wire [31:0]    mem_ram_out;
 wire [31:0]     mem_rdata1;
 wire  [2:0]    mem_rf_wsel;
 wire  [4:0]         mem_rd;  // rd register
+wire [63:0]   mem_hilo_out;
 wire            mem_rf_nwe;
 reg           hazard_stall;
+wire             exe_stall;
 
 initial begin
     hazard_stall = 1'b0;
@@ -117,10 +123,10 @@ end
 
 
 // 数据相关 R-R 
-wire   id_ex_rs_hazard_reg =  !id_is_ram & rf_nwef & id_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rs相同，只需要定向
-wire   id_ex_rt_hazard_reg =  !id_is_ram & rf_nwef & id_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rt相同，只需要定向
-wire   id_ex_hazard_mem    =  (id_is_ram & rf_nwef & if_inst[25:21] != 5'b00000 & id_rd == if_inst[25:21]) || 
-                              (id_is_ram & rf_nwef & if_inst[20:16] != 5'b00000 & id_rd == if_inst[20:16]);   // 需要停顿，store 此时不需要判断 rt 是不是有冒险，可以等到下一个周期判断，此处可优化 [TODO]
+wire   id_ex_rs_hazard_reg =  !id_is_ram & id_rf_nwe & id_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rs相同，只需要定向
+wire   id_ex_rt_hazard_reg =  !id_is_ram & id_rf_nwe & id_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rt相同，只需要定向
+wire   id_ex_hazard_mem    =  (id_is_ram & id_rf_nwe & if_inst[25:21] != 5'b00000 & id_rd == if_inst[25:21]) || 
+                              (id_is_ram & id_rf_nwe & if_inst[20:16] != 5'b00000 & id_rd == if_inst[20:16]);   // 需要停顿，store 此时不需要判断 rt 是不是有冒险，可以等到下一个周期判断，此处可优化 [TODO]
                               
 
 
@@ -138,6 +144,7 @@ if_id u_if_id(
     .clk(clk),
     .resetn(resetn),
     .hazard_stall(hazard_stall),
+    .exe_stall(exe_stall),
     .jmp(jmp),
     .pc(pc),
     .inst(inst),
@@ -148,6 +155,7 @@ if_id u_if_id(
 ifetch u_ifetch(
     .clk(clk),
     .hazard_stall(hazard_stall),
+    .exe_stall(exe_stall),
     .rst_n(resetn),
     .dest(dest),
     .jmp(jmp),
@@ -177,7 +185,8 @@ idecode u_idecode(
     .func(func), 
     .opcode(opcode), 
     .itype(itype),
-    .is_ram(is_ram)
+    .is_ram(is_ram),
+    .hilo_we(hilo_we)
     // .ram_op(ram_op),
     // .of_op(of_op)
 );
@@ -192,6 +201,8 @@ forward u_forward(
     .npc_op(npc_op),
     .rdata1(rdata1),
     .rdata2(rdata2),
+    .hilo_out(hilo_out),
+    .ex_hilo_out(ex_hilo_out),
     .id_rdata1(id_rdata1),
     .alu_out(alu_out),
     .ram_out(ram_out),
@@ -233,7 +244,9 @@ id_ex u_id_ex(
     .rf_nwe(rf_nwe),
     .is_ram(is_ram),
     .is_movz(is_movz),
-    .id_ex_hazard_mem(id_ex_hazard_mem),
+    .hilo_we(hilo_we),
+    .exe_stall(exe_stall),
+    .hazard_stall(hazard_stall),
     .id_pc(id_pc),
     .id_rdata1(id_rdata1),
     .id_rdata2(id_rdata2),
@@ -248,13 +261,15 @@ id_ex u_id_ex(
     .id_opcode(id_opcode),
     .id_rf_nwe(id_rf_nwe),
     .id_is_ram(id_is_ram),
-    .id_is_movz(id_is_movz)
+    .id_is_movz(id_is_movz),
+    .id_hilo_we(id_hilo_we)
 );
 
 execute u_execute(
-    .func(id_func),
-    .opcode(id_opcode),
-    .rf_nwe(id_rf_nwe),
+    .clk(clk),
+    .rst_n(resetn),
+    .rf_wsel(id_rf_wsel),
+    .hilo_we(id_hilo_we),
     .alu_op(id_alu_op),
     .rs_sel(id_rs_sel),
     .rt_sel(id_rt_sel),
@@ -262,8 +277,11 @@ execute u_execute(
     .rdata2(id_rdata2),
     .imm(id_imm),
     .alu_out(alu_out),
+    .hilo_out(hilo_out),
     .zero(br),
-    .rf_nwef(rf_nwef)
+    .stall(exe_stall)
+    // .rf_nwe(id_rf_nwe),
+    // .id_rf_nwe(id_rf_nwe)
 );
 
 ex_mem u_ex_mem(
@@ -271,15 +289,17 @@ ex_mem u_ex_mem(
     .resetn(resetn),
     .id_pc(id_pc),
     .alu_out(alu_out),
+    .hilo_out(hilo_out),
     .br(br),
     .id_rf_wsel(id_rf_wsel),
     .id_rd(id_rd),
     .id_rdata1(id_rdata1),
     .id_rdata2(id_rdata2),
     .id_ram_we(id_ram_we),
-    .rf_nwef(rf_nwef),
+    .id_rf_nwe(id_rf_nwe),
     .id_is_ram(id_is_ram),
     .id_is_movz(id_is_movz),
+    .exe_stall(exe_stall),
     .ex_pc(ex_pc),
     .ex_alu_out(ex_alu_out),
     .ex_rf_wsel(ex_rf_wsel),
@@ -289,7 +309,8 @@ ex_mem u_ex_mem(
     .ex_ram_we(ex_ram_we),
     .ex_rf_nwe(ex_rf_nwe),
     .ex_is_ram(ex_is_ram),
-    .ex_is_movz(ex_is_movz)
+    .ex_is_movz(ex_is_movz),
+    .ex_hilo_out(ex_hilo_out)
 );
 
 mem_wb u_mem_wb(
@@ -301,6 +322,7 @@ mem_wb u_mem_wb(
     .ex_rdata1(ex_rdata1),
     .ex_rf_wsel(ex_rf_wsel),
     .ex_rf_nwe(ex_rf_nwe),
+    .ex_hilo_out(ex_hilo_out),
     .ex_rd(ex_rd),
     .mem_pc(mem_pc),
     .mem_alu_out(mem_alu_out),
@@ -308,7 +330,8 @@ mem_wb u_mem_wb(
     .mem_rdata1(mem_rdata1),
     .mem_rf_wsel(mem_rf_wsel),
     .mem_rf_nwe(mem_rf_nwe),
-    .mem_rd(mem_rd)
+    .mem_rd(mem_rd),
+    .mem_hilo_out(mem_hilo_out)
 );
 
 rf_mux u_rf_mux(
@@ -317,6 +340,7 @@ rf_mux u_rf_mux(
     .alu_in(mem_alu_out),
     .rs_in(mem_rdata1),
     .ram_in(mem_ram_out),
+    .hilo_in(mem_hilo_out),
     .rf_wdata(rf_wdata)
 );
 

@@ -1,13 +1,14 @@
 `timescale 1ns / 1ps
 module if_id(
-        input clk,
-        input resetn,
-        input jmp,
-        input hazard_stall,
-        input [31:0] pc,
-        input [31:0] inst,
-        output [31:0] if_pc,
-        output [31:0] if_inst
+        input             clk,
+        input             resetn,
+        input             jmp,
+        input             hazard_stall,
+        input             exe_stall,
+        input    [31:0]   pc,
+        input    [31:0]   inst,
+        output   [31:0]   if_pc,
+        output   [31:0]   if_inst
     );
     
 reg [31:0] reg_if_pc;
@@ -24,7 +25,7 @@ always @(posedge clk) begin
         reg_if_pc <= 32'h0;
         reg_if_inst <= 32'h0;
     end
-    else if (hazard_stall == 1'b1) begin
+    else if (hazard_stall | exe_stall) begin
         reg_if_pc <= reg_if_pc;
         reg_if_inst <= reg_if_inst;
     end else

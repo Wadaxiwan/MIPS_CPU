@@ -2,6 +2,7 @@ module ifetch(
     input                  clk,
     input                rst_n,
     input         hazard_stall,
+    input            exe_stall,
     input  [31:0]         dest,
     input                  jmp,
     input  [2:0]            op,
@@ -10,6 +11,7 @@ module ifetch(
 );
 
 reg [31:0] saved_pc;
+wire stall = hazard_stall | exe_stall;
 
 npc u_npc(
     .pc(pc),
@@ -21,7 +23,7 @@ npc u_npc(
 
 pc u_pc(
     .clk(clk),
-    .hazard_stall(hazard_stall),
+    .stall(stall),
     .saved_pc(saved_pc),
     .rst_n(rst_n),
     .din(npc),

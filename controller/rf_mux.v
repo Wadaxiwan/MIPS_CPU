@@ -11,12 +11,16 @@ module rf_mux(
     input  [31:0]   alu_in,
     input  [31:0]    rs_in,
     input  [31:0]   ram_in,
-    output [31:0]   rf_wdata
+    input  [63:0]  hilo_in,
+    output [31:0]  rf_wdata
+
 );
 
 assign rf_wdata = ({32{rf_wsel == `WB_ALU}} & alu_in) |
                 ({32{rf_wsel == `WB_RS}} & rs_in) |
                 ({32{rf_wsel == `WB_RAM}} & ram_in) |
+                ({32{rf_wsel == `WB_HI}} & hilo_in[63:32]) |
+                ({32{rf_wsel == `WB_LO}} & hilo_in[31:0]) |
                 ({32{rf_wsel == `WB_PC8}} & (pc + 32'h8));
 
 endmodule

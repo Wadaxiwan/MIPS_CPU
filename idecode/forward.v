@@ -1,9 +1,10 @@
-`define BEQ       5'b00111 
-`define BNE       5'b11000 
-`define BGEZ      5'b11001 
-`define BGTZ      5'b11010 
-`define BLEZ      5'b11011 
-`define BLTZ      5'b11100
+`define BEQ       5'b10110
+`define BNE       5'b10111
+`define BGEZ      5'b11000 
+`define BGTZ      5'b11001 
+`define BLEZ      5'b11010 
+`define BLTZ      5'b11011
+`define SLTU      5'b11100 
 `define NPC_PC4   3'b000
 `define NPC_B     3'b010
 `define NPC_J     3'b011   
@@ -29,8 +30,10 @@ module forward(
     input  [31:0]            id_rdata1,
     input  [31:0]              alu_out,
     input  [31:0]              ram_out,
+    input  [63:0]             hilo_out,
     input  [31:0]            ex_rdata1,
     input  [31:0]           ex_alu_out,
+    input  [63:0]          ex_hilo_out,
     input  [2:0]            ex_rf_wsel,
     input  [2:0]            id_rf_wsel,
     input             id_ex_hazard_mem,
@@ -62,17 +65,29 @@ always @(*) begin
         out_rdata1 = 32'h0;
     end
     else if(id_ex_rs_hazard_reg) begin   // ID 和 EX 段的寄存器使用存在冒险时
-        out_rdata1 = alu_out;        // 当前指令不为 movz 指令时，使用 EX 段的 alu_out 数据
+        if(id_rf_wsel == `WB_HI) begin
+            out_rdata1 = hilo_out[63:32];  // 当前指令为 mfhi 指令时，使用 HILO 段的 hilo_out 数据
+        end
+        else if(id_rf_wsel == `WB_LO) begin
+            out_rdata1 = hilo_out[31:0];   // 当前指令为 mflo 指令时，使用 HILO 段的 hilo_out 数据
+        end
+        else begin
+            out_rdata1 = alu_out;       // 当前指令不为 mfhi 和 mflo 指令时，使用 alu 的 alu_out 数据
+        end
     end
-     else if(id_mem_rs_hazard_mem) begin // ID 和 MEM 段的 RAM 使用存在冒险时
+    else if(id_mem_rs_hazard_mem) begin // ID 和 MEM 段的 RAM 使用存在冒险时
         out_rdata1 = ram_out;            // 使用 MEM 段的 ram_out 数据
     end
     else if(id_mem_rs_hazard_reg) begin  // ID 和 MEM 段的寄存器使用存在冒险时
-    if (ex_rf_wsel == `WB_PC8) begin                          
-        out_rdata1 = ex_pc + 32'h8;          // 当前指令为 jalr 指令时，使用 EX 段的 pc 数据 + 8
-    end else begin
-        out_rdata1 = ex_alu_out;         // 当前指令不为 jalr 指令时，使用 EX 段的 alu_out 数据
-       end
+        if (ex_rf_wsel == `WB_PC8) begin                          
+            out_rdata1 = ex_pc + 32'h8;          // 当前指令为 jalr 指令时，使用 EX 段的 pc 数据 + 8
+        end else if (ex_rf_wsel == `WB_HI) begin
+            out_rdata1 = ex_hilo_out[63:32];
+        end else if (ex_rf_wsel == `WB_LO) begin
+            out_rdata1 = ex_hilo_out[31:0];
+        end else begin
+            out_rdata1 = ex_alu_out;       // 当前指令不为 jalr 指令时，使用 EX 段的 alu_out 数据
+        end
     end
     else begin
         out_rdata1 = rdata1;            // 当前指令不存在冒险时，使用 ID 段的 rdata1 数据
@@ -84,19 +99,30 @@ always @(*) begin
         out_rdata2 = 32'h0;
     end
     else if(id_ex_rt_hazard_reg) begin
+        if(id_rf_wsel == `WB_HI) begin
+            out_rdata2 = hilo_out[63:32];
+        end
+        else if(id_rf_wsel == `WB_LO) begin
+            out_rdata2 = hilo_out[31:0];
+        end
+        else begin
             out_rdata2 = alu_out;
+        end
     end
     else if(id_mem_rt_hazard_mem) begin
         out_rdata2 = ram_out;
     end
     else if(id_mem_rt_hazard_reg) begin
-        if (ex_rf_wsel == `WB_PC8) begin                          
+        if (ex_rf_wsel == `WB_PC8) begin
             out_rdata2 = ex_pc + 32'h8;
-        end
-        else begin
+        end else if (ex_rf_wsel == `WB_HI) begin
+            out_rdata2 = ex_hilo_out[63:32];
+        end else if (ex_rf_wsel == `WB_LO) begin
+            out_rdata2 = ex_hilo_out[31:0];
+        end else begin
             out_rdata2 = ex_alu_out;
         end
-    end
+    end 
     else begin
         out_rdata2 = rdata2;
     end

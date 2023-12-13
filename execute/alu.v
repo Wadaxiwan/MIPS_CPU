@@ -1,33 +1,31 @@
 `define ADD       5'b00001
 `define ADDU      5'b00010
 `define SUB       5'b00011
-`define SUBU      5'b00100
-`define RESUB     5'b00101
-`define RESUB_Cin 5'b00110  
-`define BEQ       5'b00111
-`define EQ_B      5'b01000
-`define SRA       5'b01001
-`define SRL       5'b01010
-`define OR        5'b01011
-`define AND       5'b01100
-`define XNOR      5'b01101 
-`define XOR       5'b01110
-`define NAND      5'b01111 
-`define ZERO      5'b10000    
-`define SLT       5'b10001 
-`define SLL       5'b10010 
-`define NOR       5'b10011 
-`define LUI       5'b10100 
-`define MULT      5'b10110 
-`define MULTU     5'b10110 
-`define DIV       5'b10111
-`define DIVU      5'b10111 
-`define BNE       5'b11000 
-`define BGEZ      5'b11001 
-`define BGTZ      5'b11010 
-`define BLEZ      5'b11011 
-`define BLTZ      5'b11100
-`define SLTU      5'b11110 
+`define SUBU      5'b00100 
+`define EQ_B      5'b00101
+`define SRA       5'b00110
+`define SRL       5'b00111
+`define OR        5'b01000
+`define AND       5'b01001
+`define XNOR      5'b01010 
+`define XOR       5'b01011
+`define NAND      5'b01100 
+`define ZERO      5'b01101    
+`define SLT       5'b01110 
+`define SLL       5'b01111 
+`define NOR       5'b10000 
+`define LUI       5'b10001 
+`define MULT      5'b10010 
+`define MULTU     5'b10011 
+`define DIV       5'b10100
+`define DIVU      5'b10101 
+`define BEQ       5'b10110
+`define BNE       5'b10111
+`define BGEZ      5'b11000 
+`define BGTZ      5'b11001 
+`define BLEZ      5'b11010 
+`define BLTZ      5'b11011
+`define SLTU      5'b11100 
 
 module alu (
     input  [31:0]   A   ,
@@ -47,8 +45,6 @@ module alu (
     wire [31:0] addu_result;
     wire [31:0] sub_result;
     wire [31:0] subu_result;
-    wire [31:0] resub_result;
-    wire [31:0] resub_cin_result;
     wire [31:0] eq_b_result;
     wire [31:0] sra_result;
     wire [31:0] srl_result;
@@ -64,11 +60,8 @@ module alu (
     wire [31:0] sll_result;
     wire [31:0] eq_result;
     wire [31:0] lui_result;
-    wire [31:0] subu_result;
     wire [63:0] mult_result;
     wire [63:0] multu_result;
-    wire [63:0] div_result;
-    wire [63:0] divu_result;
     wire [31:0] beq_result;
     wire [31:0] bne_result;
     wire [31:0] bgez_result;
@@ -89,8 +82,6 @@ module alu (
     assign {addu_count, addu_result}  = A + B ;
     assign {sub_cout, sub_result}  = {A[31], A} - {B[31], B};
     assign {subu_cout, subu_result}  = A - B;
-    assign {resub_cout, resub_result}  = B - A;
-    assign {resub_cin_cout, resub_cin_result}  = B - A - Cin;
     assign eq_b_result = B;
     assign sra_result = $signed(B) >>> A[4:0];  // rt >>> rs / sa
     assign srl_result = (B >> A[4:0]);
@@ -105,22 +96,18 @@ module alu (
     assign sltu_result = ({1'b0, A} < {1'b0, B}) ? 32'b1 : 32'b0;
     assign sll_result = (B << A[4:0]);
     assign lui_result = B;
-    assign mult_result = A * B ;
-    assign multu_result = {1'b0, A} * {1'b0, B};
-    assign div_result = {A % B , A / B};
-    assign divu_result = {{{1'b0, A}%{1'b0, B}}, {{1'b0, A}/{1'b0, B}}};
+    assign mult_result = $signed(A) * $signed(B);
+    assign multu_result = A * B;
     assign li_result = { B[15:0], {16{B[15]}} };
+
     
     assign  OF  =   ({Card == `ADD} & add_cout != add_result[31]) |
                     ({Card == `SUB} & sub_cout != sub_result[31]);
-
 
     assign  F   =   ({32{Card == `ADD}}  & add_result)  |
                     ({32{Card == `ADDU}} & addu_result) |
                     ({32{Card == `SUB}} & sub_result) |
                     ({32{Card == `SUBU}} & subu_result) |
-                    ({32{Card == `RESUB}} & resub_result) |
-                    ({32{Card == `RESUB_Cin}} & resub_cin_result) |
                     ({32{Card == `NOR}} & nor_result) |
                     ({32{Card == `EQ_B}} & eq_b_result) |
                     ({32{Card == `SRA}} & sra_result) |
@@ -137,24 +124,20 @@ module alu (
                     ({32{Card == `BEQ}} & beq_result) |
                     ({32{Card == `LUI}} & lui_result) |
                     ({32{Card == `MULT}} & mult_result[31:0]) |
-                    ({32{Card == `MULTU}} & multu_result[31:0]) |
-                    ({32{Card == `DIV}} & div_result[31:0]) |
-                    ({32{Card == `DIVU}} & divu_result[31:0]);
+                    ({32{Card == `MULTU}} & multu_result[31:0]);
 
 
-    assign AddF =   ({32{Card == `MULT}}  & multu_result[63:32])  |
-                    ({32{Card == `MULTU}} & multu_result[63:32]) |
-                    ({32{Card == `DIV}} & div_result[63:32]) |
-                    ({32{Card == `DIVU}} & divu_result[63:32]);
+    assign AddF =   ({32{Card == `MULT}}  & mult_result[63:32])  |
+                    ({32{Card == `MULTU}} & multu_result[63:32])  |
+                    ({32{Card == `ADD}} & add_result);
 
             
     assign  Cout =  ({Card == `ADD} & add_cout) |
                     ({Card == `ADDU} & addu_cout) |
                     ({Card == `SUB} & sub_cout) |
-                    ({Card == `SUBU} & subu_cout) |
-                    ({Card == `RESUB} & resub_cout) |
-                    ({Card == `RESUB_Cin} & resub_cin_cout);
+                    ({Card == `SUBU} & subu_cout);
         
     assign  Zero =  (F == 32'b0) & (Cout == 1'b0);
+
 
 endmodule
