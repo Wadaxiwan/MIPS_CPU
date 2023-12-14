@@ -15,6 +15,7 @@
 `define WB_HI     3'b100
 `define WB_LO     3'b101
 `define WB_PC8    3'b110
+`define WB_CP0    3'b111
 
 
 module forward(

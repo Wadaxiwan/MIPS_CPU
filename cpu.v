@@ -29,32 +29,95 @@ module mycpu_top (
     output  [31:0]    debug_wb_rf_wdata  // 当前指令要写回的数据
 );
 
-wire  [31:0]          pc;
-wire                 jmp;  // decide branch in decode, 1 jmp 0 pc+4
-wire                  br;  // zero 1  not zero 0
-wire  [2:0]       npc_op;  // npc op generate by controller
+wire  [31:0]              pc;
+wire                     jmp;  // decide branch in decode, 1 jmp 0 pc+4
+wire                      br;  // zero 1  not zero 0
+wire  [2:0]           npc_op;  // npc op generate by controller
 
-wire  [2:0]      rf_wsel;  // rd write sel generate by controller
-wire  [31:0]    rf_wdata;  // rd write data generate by rf_mux
+wire  [2:0]          rf_wsel;  // rd write sel generate by controller
+wire  [31:0]    mux_rf_wdata;  // rd write data generate by rf_mux
+wire               mux_rf_we;
 
-wire  [4:0]       alu_op;  // alu op generate by controller
-wire  [31:0]     alu_out;  // alu out generate by execute
+wire  [4:0]           alu_op;  // alu op generate by controller
+wire  [31:0]         alu_out;  // alu out generate by execute
 
-wire              ram_we;  // ram write enable generate by controller
-wire  [31:0]     ram_out;  // ram out generate by ram_top
+wire                  ram_we;  // ram write enable generate by controller
+wire  [31:0]         ram_out;  // ram out generate by ram_top
 
-wire  [31:0]      rdata1;  //  reg1(rs) data
-wire  [31:0]      rdata2;  //  reg2(rt) data
-wire  [1:0]       rs_sel;  //  rt select
-wire  [1:0]       rt_sel;  //  rt select
-wire  [31:0]         imm;  //  imm gen data
-wire  [31:0]         dest;  //  dest
-wire  [31:0]        inst;  //  instruction
+wire  [31:0]          rdata1;  //  reg1(rs) data
+wire  [31:0]          rdata2;  //  reg2(rt) data
+wire  [1:0]           rs_sel;  //  rt select
+wire  [1:0]           rt_sel;  //  rt select
+wire  [31:0]             imm;  //  imm gen data
+wire  [31:0]            dest;  //  dest
+wire  [31:0]            inst;  //  instruction
+wire                   of_op;
+
+
+/* CP0 */
+wire                   int_flush;
+wire [31:0]               int_pc;
+wire [31:0]            cp0_rdata;
+
+
+wire                      cp0_ex;  // first in ifetch , this inst is a exception
+wire  [4:0]           cp0_excode;  // first in ifetch
+wire  [31:0]        cp0_badvaddr;  // first in ifetch
+
+wire                   if_cp0_ex; 
+wire  [4:0]        if_cp0_excode; 
+wire  [31:0]     if_cp0_badvaddr; 
+
+
+wire                      cp0_we;  // first in idecode
+wire                      cp0_bd;  // first in idecode , this inst is a branch delay slot
+wire   [4:0]            cp0_addr;  // first in idecode
+wire              cp0_eret_flush;
+
+wire  [4:0]      ide_cp0_excode;    // update in idecode
+wire             ide_cp0_ex;        // update in idecode
+
+wire  [4:0]      id_cp0_excode;    
+wire             id_cp0_ex;        
+wire  [31:0]     id_cp0_badvaddr;  // first in ifetch
+wire             id_cp0_we;        // first in ifetch
+wire             id_cp0_bd;        // first in idecode , this inst is a branch delay slot
+wire  [4:0]      id_cp0_addr;      // first in idecode
+wire             id_cp0_eret_flush;
+
+wire  [4:0]      exe_cp0_excode;    // update in execute
+wire             exe_cp0_ex;        // update in execute
+
+wire  [4:0]      ex_cp0_excode;    // first in ifetch
+wire             ex_cp0_ex;        // first in ifetch , this inst is a exception
+wire  [31:0]     ex_cp0_badvaddr;  // first in ifetch
+wire             ex_cp0_we;        // first in ifetch
+wire             ex_cp0_bd;        // first in idecode , this inst is a branch delay slot
+wire  [4:0]      ex_cp0_addr;      // first in idecode
+wire             ex_cp0_eret_flush;
+
+wire  [4:0]      memory_cp0_excode;    // first in ifetch
+wire             memory_cp0_ex;        // first in ifetch , this inst is a exception
+wire  [31:0]     memory_cp0_badvaddr;  // first in ifetch
+
+wire  [4:0]      mem_cp0_excode;    // first in ifetch
+wire             mem_cp0_ex;        // first in ifetch , this inst is a exception
+wire  [31:0]     mem_cp0_badvaddr;  // first in ifetch
+wire             mem_cp0_we;        // first in ifetch
+wire             mem_cp0_bd;        // first in idecode , this inst is a branch delay slot
+wire  [4:0]      mem_cp0_addr;      // first in idecode
+wire             mem_cp0_eret_flush;
+
+
+/* CP0 End */
+wire              ifetch_ex;
+wire             idecode_ex;
+wire                  ex_ex;
+
 
 wire [4:0]              rd;  // rd number
 wire [5:0]            func;  
 wire [5:0]          opcode;  
-wire [2:0]           itype;  
 wire                rf_nwe;  
 wire                is_ram;
 wire [1:0]         hilo_we;
@@ -114,12 +177,16 @@ wire [31:0]         mem_pc;
 wire [31:0]    mem_alu_out;
 wire [31:0]    mem_ram_out;
 wire [31:0]     mem_rdata1;
+wire [31:0]     mem_rdata2;
 wire  [2:0]    mem_rf_wsel;
 wire  [4:0]         mem_rd;  // rd register
 wire [63:0]   mem_hilo_out;
 wire            mem_rf_nwe;
 reg           hazard_stall;
 wire             exe_stall;
+
+
+
 
 initial begin
     hazard_stall = 1'b0;
@@ -152,17 +219,30 @@ wire   id_mem_rt_hazard_reg = !ex_is_ram & ex_rf_nwe & ex_rd == if_inst[20:16] &
 
 assign inst = inst_sram_rdata;
 
+
+// CP0 exception
+assign ifetch_ex = if_cp0_ex | id_cp0_ex | ex_cp0_ex | memory_cp0_ex;
+assign idecode_ex = id_cp0_ex | ex_cp0_ex | memory_cp0_ex;
+assign ex_ex = ex_cp0_ex | memory_cp0_ex;
+
 if_id u_if_id(
     .clk(clk),
     .resetn(resetn),
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
     .cond_exe_stall(cond_exe_stall),
+    .int_flush(int_flush),
+    .cp0_ex(cp0_ex),
+    .cp0_excode(cp0_excode),
+    .cp0_badvaddr(cp0_badvaddr)
     .jmp(jmp),
     .pc(pc),
     .inst(inst),
     .if_pc(if_pc),
-    .if_inst(if_inst)
+    .if_inst(if_inst),
+    .if_cp0_ex(if_cp0_ex),
+    .if_cp0_excode(if_cp0_excode),
+    .if_cp0_badvaddr(if_cp0_badvaddr)
 );
 
 ifetch u_ifetch(
@@ -170,22 +250,30 @@ ifetch u_ifetch(
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
     .cond_branch(cond_branch),
+    .int_flush(int_flush),
+    .int_pc(int_pc),
     .rst_n(resetn),
     .dest(dest),
     .jmp(jmp),
     .op(npc_op),
     .pc(pc),
     .npc(npc),
-    .cond_exe_stall(cond_exe_stall)
+    .inst_sram_addr(inst_sram_addr),
+    .cond_exe_stall(cond_exe_stall),
+    .cp0_ex(cp0_ex),
+    .cp0_excode(cp0_excode),
+    .cp0_badvaddr(cp0_badvaddr)
 );
 
 
 idecode u_idecode(
     .clk(clk),
     .inst(if_inst),
+    .if_cp0_ex(if_cp0_ex),
+    .if_cp0_excode(if_cp0_excode),
     .rf_rd(mem_rd),
-    .rf_wdata(rf_wdata),
-    .rf_we(mem_rf_nwe),
+    .rf_wdata(mux_rf_wdata),
+    .rf_we(mux_rf_we),
     .rdata1(rdata1),
     .rdata2(rdata2),
     .rs_sel(rs_sel),
@@ -199,13 +287,17 @@ idecode u_idecode(
     .rd(rd),  
     .func(func), 
     .opcode(opcode), 
-    .itype(itype),
     .is_ram(is_ram),
     .hilo_we(hilo_we),
     .ram_wen(ram_wen),
-    .ram_sign(ram_sign)
-    // .ram_op(ram_op),
-    // .of_op(of_op)
+    .ram_sign(ram_sign),
+    .id_cp0_ex(ide_cp0_ex),
+    .id_cp0_excode(ide_cp0_excode),
+    .id_cp0_bd(cp0_bd),
+    .id_cp0_we(cp0_we),
+    .id_cp0_addr(cp0_addr),
+    .id_cp0_eret_flush(cp0_eret_flush)
+    .of_op(of_op)
 );
 
 forward u_forward(
@@ -260,13 +352,20 @@ id_ex u_id_ex(
     .rd(rd),
     .func(func),
     .opcode(opcode),
-    .itype(itype),
     .rf_nwe(rf_nwe),
     .is_ram(is_ram),
     .is_movz(is_movz),
     .hilo_we(hilo_we),
     .exe_stall(exe_stall),
     .hazard_stall(hazard_stall),
+    .int_flush(int_flush),
+    .cp0_ex(ide_cp0_ex),
+    .cp0_excode(ide_cp0_excode),
+    .cp0_badvaddr(if_cp0_badvaddr),
+    .cp0_we(cp0_we),
+    .cp0_bd(cp0_bd),
+    .cp0_addr(cp0_addr),
+    .cp0_eret_flush(cp0_eret_flush),
     .id_pc(id_pc),
     .id_rdata1(id_rdata1),
     .id_rdata2(id_rdata2),
@@ -284,12 +383,22 @@ id_ex u_id_ex(
     .id_is_movz(id_is_movz),
     .id_hilo_we(id_hilo_we),
     .id_ram_wen(id_ram_wen),
-    .id_ram_sign(id_ram_sign)
+    .id_ram_sign(id_ram_sign),
+    .id_cp0_ex(id_cp0_ex),
+    .id_cp0_excode(id_cp0_excode),
+    .id_cp0_badvaddr(id_cp0_badvaddr),
+    .id_cp0_we(id_cp0_we),
+    .id_cp0_bd(id_cp0_bd),
+    .id_cp0_addr(id_cp0_addr),
+    .id_cp0_eret_flush(id_cp0_eret_flush)
 );
 
 execute u_execute(
     .clk(clk),
     .rst_n(resetn),
+    .of_op(of_op),
+    .id_cp0_ex(id_cp0_ex),
+    .id_cp0_excode(id_cp0_excode),
     .rf_wsel(id_rf_wsel),
     .hilo_we(id_hilo_we),
     .alu_op(id_alu_op),
@@ -301,7 +410,9 @@ execute u_execute(
     .alu_out(alu_out),
     .hilo_out(hilo_out),
     .zero(br),
-    .stall(exe_stall)
+    .stall(exe_stall),
+    .exe_cp0_ex(exe_cp0_ex),
+    .exe_cp0_excode(exe_cp0_excode)
     // .rf_nwe(id_rf_nwe),
     // .id_rf_nwe(id_rf_nwe)
 );
@@ -313,6 +424,17 @@ ex_mem u_ex_mem(
     .alu_out(alu_out),
     .hilo_out(hilo_out),
     .br(br),
+    .int_flush(int_flush),
+    .exe_cp0_ex(exe_cp0_ex),
+    .exe_cp0_excode(exe_cp0_excode),
+    .memory_cp0_ex(memory_cp0_ex),
+    .memory_cp0_excode(memory_cp0_excode),
+    .memory_cp0_badvaddr(memory_cp0_badvaddr),
+    .id_cp0_badvaddr(id_cp0_badvaddr),
+    .id_cp0_we(id_cp0_we),
+    .id_cp0_bd(id_cp0_bd),
+    .id_cp0_addr(id_cp0_addr),
+    .id_cp0_eret_flush(id_cp0_eret_flush),
     .id_rf_wsel(id_rf_wsel),
     .id_rd(id_rd),
     .id_rdata1(id_rdata1),
@@ -340,7 +462,14 @@ ex_mem u_ex_mem(
     .ex_opcode(ex_opcode),
     .ex_func(ex_func),
     .ex_ram_wen(ex_ram_wen),
-    .ex_ram_sign(ex_ram_sign)
+    .ex_ram_sign(ex_ram_sign),
+    .ex_cp0_ex(ex_cp0_ex),
+    .ex_cp0_excode(ex_cp0_excode),
+    .ex_cp0_badvaddr(ex_cp0_badvaddr),
+    .ex_cp0_we(ex_cp0_we),
+    .ex_cp0_bd(ex_cp0_bd),
+    .ex_cp0_addr(ex_cp0_addr),
+    .ex_cp0_eret_flush(ex_cp0_eret_flush)
 );
 
 memory u_memory(
@@ -349,12 +478,17 @@ memory u_memory(
     .ex_ram_addr(ex_alu_out[1:0]),
     .id_ram_we(id_ram_we),
     .id_ram_wen(id_ram_wen),
-    .id_ram_addr(alu_out[1:0]),
+    .id_ram_addr(alu_out),
+    .memory_ex(memory_ex),
     .data_sram_wen(data_sram_wen),
+    .data_sram_addr(data_sram_addr),
     .ram_in(data_sram_rdata),
     .ram_out(ram_out),
     .s_ram_in(id_rdata2),
-    .s_ram_out(data_sram_wdata)
+    .s_ram_out(data_sram_wdata),
+    .memory_cp0_excode(memory_cp0_excode),    
+    .memory_cp0_ex(memory_cp0_ex),
+    .memory_cp0_badvaddr(memory_cp0_badvaddr)
 );
 
 mem_wb u_mem_wb(
@@ -364,49 +498,90 @@ mem_wb u_mem_wb(
     .ex_alu_out(ex_alu_out),
     .ram_out(ram_out),
     .ex_rdata1(ex_rdata1),
+    .ex_rdata2(ex_rdata2),
     .ex_rf_wsel(ex_rf_wsel),
     .ex_rf_nwe(ex_rf_nwe),
     .ex_hilo_out(ex_hilo_out),
     .ex_rd(ex_rd),
     .ex_opcode(ex_opcode),
     .ex_func(ex_func),
+    .int_flush(int_flush),
+    .ex_cp0_ex(ex_cp0_ex),
+    .ex_cp0_excode(ex_cp0_excode),
+    .ex_cp0_badvaddr(ex_cp0_badvaddr),
+    .ex_cp0_we(ex_cp0_we),
+    .ex_cp0_bd(ex_cp0_bd),
+    .ex_cp0_addr(ex_cp0_addr),
+    .ex_cp0_eret_flush(ex_cp0_eret_flush)
     // .ex_ram_wen(ex_ram_wen),
     // .ex_ram_sign(ex_ram_sign),
     .mem_pc(mem_pc),
     .mem_alu_out(mem_alu_out),
     .mem_ram_out(mem_ram_out),
     .mem_rdata1(mem_rdata1),
+    .mem_rdata2(mem_rdata2),
     .mem_rf_wsel(mem_rf_wsel),
     .mem_rf_nwe(mem_rf_nwe),
     .mem_rd(mem_rd),
     .mem_hilo_out(mem_hilo_out),
     .mem_opcode(mem_opcode),
-    .mem_func(mem_func)
+    .mem_func(mem_func),
+    .mem_cp0_ex(mem_cp0_ex),
+    .mem_cp0_excode(mem_cp0_excode),
+    .mem_cp0_badvaddr(mem_cp0_badvaddr),
+    .mem_cp0_we(mem_cp0_we),
+    .mem_cp0_bd(mem_cp0_bd),
+    .mem_cp0_addr(mem_cp0_addr),
+    .mem_cp0_eret_flush(mem_cp0_eret_flush)
     // .mem_ram_wen(mem_ram_wen),
     // .mem_ram_sign(mem_ram_sign)
 );
 
 rf_mux u_rf_mux(
     .pc(mem_pc),
+    .mem_rf_nwe(mem_rf_nwe),
+    .mem_cp0_ex(mem_cp0_ex),
+    .int_flush(int_flush),
     .rf_wsel(mem_rf_wsel),
     .alu_in(mem_alu_out),
     .rs_in(mem_rdata1),
     .ram_in(mem_ram_out),
     .hilo_in(mem_hilo_out),
-    .rf_wdata(rf_wdata)
+    .cp0_in(cp0_rdata),
+    .rf_wdata(mux_rf_wdata),
+    .rf_nwe(mux_rf_we)
+);
+
+cp0_reg u_cp0_reg(
+    .clk(clk),
+    .resetn(resetn),
+    .eret_flush(mem_cp0_eret_flush),
+    .cp0_badvaddr(mem_cp0_badvaddr),
+    .cp0_excode(mem_cp0_excode),
+    .cp0_ex(mem_cp0_ex),
+    .cp0_bd(mem_cp0_bd),
+    .cp0_we(mem_cp0_we),
+    .cp0_addr(mem_cp0_addr),
+    .cp0_wdata(mem_rdata2),
+    .ex_int(6'b0),
+    .cp0_rdata(cp0_rdata),
+    .int_pc(int_pc),
+    .int_flush(int_flush)
 );
 
 assign data_sram_en    = 1'b1;
-assign data_sram_addr  = (alu_out[31:28] >= 4'h8 && alu_out[31:28] < 4'hC) ? {3'b0, alu_out[28:0]}: alu_out;
 
 assign inst_sram_en    = 1'b1;
 assign inst_sram_wen   = {4{1'b0}};
-assign inst_sram_addr  = (npc[31:28] >= 4'h8 && npc[31:28] < 4'hC) ? {3'b0, npc[28:0]}: npc;
 assign inst_sram_wdata = 32'b0;
 
 assign debug_wb_pc = mem_pc;
 assign debug_wb_rf_wdata = rf_wdata;
 assign debug_wb_rf_wen = {4{mem_rf_nwe}};
 assign debug_wb_rf_wnum = mem_rd;
+
+
+
+
 
 endmodule

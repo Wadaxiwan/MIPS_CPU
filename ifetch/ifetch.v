@@ -1,24 +1,41 @@
+`define EX_INT   5'h00 // interrupt
+`define EX_ADEL  5'h04 // address error exception (load or instruction fetch)
+`define EX_ADES  5'h05 // address error exception (store)
+`define EX_SYS   5'h08 // syscall exception
+`define EX_BP    5'h09 // breakpoint exception
+`define EX_RI    5'h0a // reserved instruction exception
+`define EX_OV    5'h0c // coprocessor unusable exception
+
 module ifetch(
     input                      clk,
     input                    rst_n,
     input             hazard_stall,
     input                exe_stall,
     input              cond_branch,
+    input                int_flush,
+    input                ifetch_ex,
+    input  [31:0]           int_pc,
     input  [31:0]             dest,
     input                      jmp,
     input  [2:0]                op,
     output [31:0]               pc,
     output [31:0]              npc,
-    output          cond_exe_stall
+    output [31:0]   inst_sram_addr,
+    output          cond_exe_stall,
+    output                  cp0_ex,
+    output [4:0]        cp0_excode,
+    output [31:0]     cp0_badvaddr
 );
 
-reg [31:0] saved_pc;
+reg [31:0]   saved_pc;
 
 
 npc u_npc(
     .pc(pc),
     .dest(dest),
     .jmp(jmp),
+    .int_flush(int_flush),
+    .int_pc(int_pc),
     .op(op),
     .npc(npc)
 );
@@ -42,6 +59,14 @@ always @(posedge clk) begin
         saved_pc <= pc;
     end
 end
+
+
+
+assign cp0_ex = npc[1:0] != 2'b00;
+assign cp0_excode = `EX_ADEL;
+assign cp0_badvaddr = cp0_ex ? npc : 32'h0;
+
+assign inst_sram_addr = (cp0_ex | ifetch_ex) ? 32'h0 : npc;
 
 
 endmodule

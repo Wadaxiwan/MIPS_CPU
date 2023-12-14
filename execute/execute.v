@@ -38,24 +38,30 @@
 `define WB_HI     3'b100
 `define WB_LO     3'b101
 `define WB_PC8    3'b110
+`define WB_CP0    3'b111
 
 module execute(
-    input              clk,
-    input            rst_n,
-    // input           rf_nwe,
-    input [2:0]    rf_wsel,
-    input [1:0]    hilo_we,
-    input [4:0]     alu_op,
-    input [1:0]     rs_sel,
-    input [1:0]     rt_sel,
-    input [31:0]    rdata1,
-    input [31:0]    rdata2,
-    input [31:0]       imm,
-    output[31:0]   alu_out,
-    output[63:0]  hilo_out,
-    output            zero,
-    output           stall
-    // output         rf_nwef
+    input                       clk,
+    input                     rst_n,
+    input                     of_op,
+    input [4:0]       id_cp0_excode,    // update in execute
+    input                 id_cp0_ex,  
+    input [2:0]             rf_wsel,
+    input [1:0]             hilo_we,
+    input [4:0]              alu_op,
+    input [1:0]              rs_sel,
+    input [1:0]              rt_sel,
+    input [31:0]             rdata1,
+    input [31:0]             rdata2,
+    input [31:0]                imm,
+    output[31:0]            alu_out,
+    output[63:0]           hilo_out,
+    output                     zero,
+    output                    stall,
+    output [4:0]     exe_cp0_excode,    
+    output               exe_cp0_ex  
+    // input               rf_nwe,
+    // output              rf_nwef
 );
 
 wire                  Cout;
@@ -69,11 +75,19 @@ wire            sourceData;
 wire               hasData;
 wire                dataOK;  
 wire [63:0]        hilo_in;
+wire                    OF;
+
+
+assign exe_cp0_ex = id_cp0_ex | (of_op & OF);
+assign exe_cp0_excode = id_cp0_ex ? id_cp0_excode : `EX_OV;
+
 
 assign data1 = (rs_sel == `ALUB_EXT) ? imm : rdata1;
 assign data2 = (rt_sel == `ALUB_EXT) ? imm : rdata2;
 assign sourceData = alu_op == `DIV | alu_op == `DIVU;
-assign stall = (rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & hasData & !dataOK;
+// assign stall = (rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & hasData & !dataOK;  // for non stall version (high performance)
+assign stall = hasData & !dataOK;
+
 
 assign hilo_in[63:32] = ({32{hilo_we[1]}} & AddF) |
                         ({32{!hilo_we[1] & dataOK}} & remainder);  // MIPS put remainder(HI) in higher 32 bits, quotient£®LO) in lower 32 bits
@@ -83,9 +97,11 @@ assign hilo_in[31:0] = ({32{hilo_we[0]}} & alu_out) |
 alu u_alu(
     .A(data1),
     .B(data2),
+    .of_op(of_op),
     .Cin(1'b0),
     .Card(alu_op),
     .F(alu_out),
+    .OF(OF),
     .AddF(AddF),
     .Cout(Cout),
     .Zero(zero)  // Ω”»Îbr

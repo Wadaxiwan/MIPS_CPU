@@ -32,7 +32,7 @@ module alu (
     input  [31:0]   B   ,
     input           Cin ,
     input  [4 :0]   Card,
-//    input           of_op,
+   input            of_op,
 
     output [31:0]   F   ,
     output [31:0]   AddF,  // Suit for HILO

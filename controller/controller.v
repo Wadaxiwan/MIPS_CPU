@@ -44,6 +44,8 @@
 `define WB_HI     3'b100
 `define WB_LO     3'b101
 `define WB_PC8    3'b110
+`define WB_CP0    3'b111
+
 
 /* rf_rsel */
 `define RB_HI     2'b10
@@ -70,26 +72,66 @@
 `define RAM_SIGN   2'b01
 `define RAM_UNSIGN 2'b10
 
+`define cp0_int   5'h00 // interrupt
+`define EX_ADEL  5'h04 // address error exception (load or instruction fetch)
+`define EX_ADES  5'h05 // address error exception (store)
+`define EX_SYS   5'h08 // syscall exception
+`define EX_BP    5'h09 // breakpoint exception
+`define EX_RI    5'h0a // reserved instruction exception
+`define EX_OV    5'h0c // coprocessor unusable exception
+
+`define CR_INDEX      5'h01 // TLB index
+`define CR_ENTRYLO0   5'h02 // TLB entry low 0
+`define CR_ENTRYLO1   5'h03 // TLB entry low 1
+`define CR_BADVADDR   5'h04 // bad virtual address
+`define CR_COUNT      5'h05 // timer count
+`define CR_ENTRYHI    5'h06 // TLB entry high
+`define CR_COMPARE    5'h07 // timer compare
+`define CR_STATUS     5'h08 // status register
+`define CR_CAUSE      5'h09 // cause register
+`define CR_EPC        5'h0a // exception program counter
+`define CR_CONFIG     5'h0b // configuration register
+`define CR_CONFIG1    5'h0c // configuration register 1
+
+
+
 module controller(
-    input [2:0]          itype,
-    input [5:0]         opcode,
-    input [5:0]           func,
-    input [4:0]             rt,
-    output [1:0]        rs_sel,
-    output [1:0]        rt_sel,
-    output [4:0]        alu_op,
-    output [2:0]        npc_op,
-    output [3:0]       ram_wen,  // 4bit is set means one word, 2bit is set means one half word, 1bit is set means one byte
-    output [1:0]      ram_sign,
-    output               rf_we,
-    output [2:0]       rf_wsel,
-    output [1:0]       hilo_we,
-    output [2:0]       sext_op,
-    output              ram_we,
-    output              is_ram,
-    output [2:0]        ram_op,
-    output               of_op
+    input [5:0]           opcode,
+    input [5:0]             func,
+    input [4:0]               rs,
+    input [4:0]               rt,
+    input [4:0]               rd,
+    input [2:0]         cp0_wsel,
+    output [1:0]          rs_sel,
+    output [1:0]          rt_sel,
+    output [4:0]          alu_op,
+    output [2:0]          npc_op,
+    output [3:0]         ram_wen,  // 4bit is set means one word, 2bit is set means one half word, 1bit is set means one byte
+    output [1:0]        ram_sign,
+    output                 rf_we,
+    output [2:0]         rf_wsel,
+    output [1:0]         hilo_we,
+    output [2:0]         sext_op,
+    output                ram_we,
+    output                is_ram,
+    output [2:0]          ram_op,
+    output                 of_op,
+    output reg            cp0_bd,    
+    output                cp0_we,
+    output [4:0]        cp0_addr,
+    output [4:0]      cp0_excode,
+    output                cp0_ex
 );
+
+
+always @(posedge clk) begin
+    if (~resetn) begin
+        cp0_bd <= 1'b0;
+    end else begin
+        cp0_bd <= npc_op == `NPC_J || npc_op == `NPC_JR || npc_op == `NPC_B;
+    end
+end
+
 
 // 根据指令的类型决定PC跳转的方向
 assign npc_op = ({3{opcode == 6'b000000 && (func != 5'b001000 || func != 5'b001001) }} & `NPC_PC4) |    // Except JR or JALR
@@ -112,7 +154,8 @@ assign rf_we = ({opcode == 6'b000000 && func != 6'b001000 } & 1'b1)   |   // R-R
                ({opcode == 6'b000001 && rt == 5'b10000} & 1'b1)   |       // BLTZAL  Branch with link PC + 8
                ({opcode == 6'b000011} & 1'b1) |                           // JAL  Branch with link PC + 8  
                ({opcode[5:3] == 3'b001} & 1'b1) |                         // R-Imm ALU
-               ({opcode[5:3] == 3'b100} & 1'b1);                          // Load
+               ({opcode[5:3] == 3'b100} & 1'b1) |                         // Load
+               ({opcode == 6'b010000 && rs == 5'b00000});                 // MFC0
 
 // 根据指令的类型决定写寄存器堆的来源
 assign rf_wsel = ({3{opcode == 6'b000000 && (func[5:2] != 4'b0100 && func != 6'b001001)}} & `WB_ALU) |  // R-R ALU Except MFHI / MFLO / MTHI / MTLO
@@ -120,10 +163,12 @@ assign rf_wsel = ({3{opcode == 6'b000000 && (func[5:2] != 4'b0100 && func != 6'b
                  ({3{opcode == 6'b000000 && func == 6'b010010}}  & `WB_LO) |   // MFLO
                  ({3{opcode == 6'b000000 && func == 6'b001001}} & `WB_PC8) |   // JALR
                  ({3{opcode == 6'b000000 && (func == 6'b010011 || func == 6'b010001)}}  & `WB_RS) |   // MTHI / MTLO
+                 ({3{opcode == 6'b010000 && rs == 5'b00100}}  & `WB_RS) |      // MTC0 (RT but reuse WB_RS)
                  ({3{opcode == 6'b000001}} & `WB_PC8) |                        // BGEZAL(also include BGEZ but don't use)
                  ({3{opcode == 6'b000011}} & `WB_PC8) |                        // JAL
                  ({3{opcode[5:3] == 6'b001}} & `WB_ALU) |                      // R-Imm ALU
-                 ({3{opcode[5:3] == 6'b100}} & `WB_RAM);                       // Load
+                 ({3{opcode[5:3] == 6'b100}} & `WB_RAM) |                      // Load
+                 ({3{opcode == 6'b010000 && rs == 5'b00000}} & `WB_CP0);                
 
 // 根据指令的类型决定是否写特殊寄存器堆
 assign hilo_we = ({2{opcode == 6'b000000 && func == 6'b010001}}  & `RB_HI) |   // MFHI
@@ -216,12 +261,27 @@ assign ram_op = ({3{ opcode == 6'b100000 || opcode == 6'b101000 }} & `RAM_B) |
 
 assign of_op =  ( opcode == 6'b000000 && func == 6'b100000 ) |
                 ( opcode == 6'b001000 ) |
-                ( opcode == 6'b000000 && func == 6'b100010 ) |
-                ( opcode == 6'b100001 ) |
-                ( opcode == 6'b100101 ) |
-                ( opcode == 6'b100011 ) |
-                ( opcode == 6'b101001 ) |
-                ( opcode == 6'b101011 ) ;
+                ( opcode == 6'b000000 && func == 6'b100010 );
+
+assign cp0_ex = (opcode == 6'b000000 && (func == 6'b001101 || func == 6'b001100));
              
+assign cp0_we = (opcode == 6'b010000 && rs == 5'b00100);   // MTC0
+
+assign cp0_excode = ({5{opcode == 6'b000000 && func == 6'b001101}} & `EX_BP) |
+                    ({5{opcode == 6'b000000 && func == 6'b001100}} & `EX_SYS);
+
+assign cp0_addr = ({5{rd == 5'h0 && cp0_wsel == 3'h0}} & `CR_INDEX) |
+                  ({5{rd == 5'h2 && cp0_wsel == 3'h0}} & `CR_ENTRYLO0) |
+                  ({5{rd == 5'h3 && cp0_wsel == 3'h0}} & `CR_ENTRYLO1) |
+                  ({5{rd == 5'h8 && cp0_wsel == 3'h0}} & `CR_BADVADDR) |
+                  ({5{rd == 5'h9 && cp0_wsel == 3'h0}} & `CR_COUNT) |
+                  ({5{rd == 5'h10 && cp0_wsel == 3'h0}} & `CR_ENTRYHI) |
+                  ({5{rd == 5'h11 && cp0_wsel == 3'h0}} & `CR_COMPARE) |
+                  ({5{rd == 5'h12 && cp0_wsel == 3'h0}} & `CR_STATUS) |
+                  ({5{rd == 5'h13 && cp0_wsel == 3'h0}} & `CR_CAUSE) |
+                  ({5{rd == 5'h14 && cp0_wsel == 3'h0}} & `CR_EPC) |
+                  ({5{rd == 5'h16 && cp0_wsel == 3'h0}} & `CR_CONFIG) |
+                  ({5{rd == 5'h16 && cp0_wsel == 3'h1}} & `CR_CONFIG1) ;
+
 
 endmodule
