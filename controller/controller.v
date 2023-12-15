@@ -72,7 +72,7 @@
 `define RAM_SIGN   2'b01
 `define RAM_UNSIGN 2'b10
 
-`define cp0_int   5'h00 // interrupt
+`define EX_INT   5'h00 // interrupt
 `define EX_ADEL  5'h04 // address error exception (load or instruction fetch)
 `define EX_ADES  5'h05 // address error exception (store)
 `define EX_SYS   5'h08 // syscall exception
@@ -96,6 +96,8 @@
 
 
 module controller(
+    input                    clk,
+    input                 resetn,
     input [5:0]           opcode,
     input [5:0]             func,
     input [4:0]               rs,
@@ -131,6 +133,8 @@ always @(posedge clk) begin
         cp0_bd <= npc_op == `NPC_J || npc_op == `NPC_JR || npc_op == `NPC_B;
     end
 end
+
+wire  unvalid_inst;
 
 
 // 根据指令的类型决定PC跳转的方向
@@ -263,25 +267,70 @@ assign of_op =  ( opcode == 6'b000000 && func == 6'b100000 ) |
                 ( opcode == 6'b001000 ) |
                 ( opcode == 6'b000000 && func == 6'b100010 );
 
-assign cp0_ex = (opcode == 6'b000000 && (func == 6'b001101 || func == 6'b001100));
-             
+assign cp0_ex = (opcode == 6'b000000 && (func == 6'b001101 || func == 6'b001100)) | (~valid_inst);
+
+
 assign cp0_we = (opcode == 6'b010000 && rs == 5'b00100);   // MTC0
 
 assign cp0_excode = ({5{opcode == 6'b000000 && func == 6'b001101}} & `EX_BP) |
-                    ({5{opcode == 6'b000000 && func == 6'b001100}} & `EX_SYS);
+                    ({5{opcode == 6'b000000 && func == 6'b001100}} & `EX_SYS) |
+                    ({5{~valid_inst}} & `EX_RI);
 
-assign cp0_addr = ({5{rd == 5'h0 && cp0_wsel == 3'h0}} & `CR_INDEX) |
-                  ({5{rd == 5'h2 && cp0_wsel == 3'h0}} & `CR_ENTRYLO0) |
-                  ({5{rd == 5'h3 && cp0_wsel == 3'h0}} & `CR_ENTRYLO1) |
-                  ({5{rd == 5'h8 && cp0_wsel == 3'h0}} & `CR_BADVADDR) |
-                  ({5{rd == 5'h9 && cp0_wsel == 3'h0}} & `CR_COUNT) |
-                  ({5{rd == 5'h10 && cp0_wsel == 3'h0}} & `CR_ENTRYHI) |
-                  ({5{rd == 5'h11 && cp0_wsel == 3'h0}} & `CR_COMPARE) |
-                  ({5{rd == 5'h12 && cp0_wsel == 3'h0}} & `CR_STATUS) |
-                  ({5{rd == 5'h13 && cp0_wsel == 3'h0}} & `CR_CAUSE) |
-                  ({5{rd == 5'h14 && cp0_wsel == 3'h0}} & `CR_EPC) |
-                  ({5{rd == 5'h16 && cp0_wsel == 3'h0}} & `CR_CONFIG) |
-                  ({5{rd == 5'h16 && cp0_wsel == 3'h1}} & `CR_CONFIG1) ;
+assign cp0_addr = ({5{rd == 5'd0 && cp0_wsel == 3'h0}} & `CR_INDEX) |
+                  ({5{rd == 5'd2 && cp0_wsel == 3'h0}} & `CR_ENTRYLO0) |
+                  ({5{rd == 5'd3 && cp0_wsel == 3'h0}} & `CR_ENTRYLO1) |
+                  ({5{rd == 5'd8 && cp0_wsel == 3'h0}} & `CR_BADVADDR) |
+                  ({5{rd == 5'd9 && cp0_wsel == 3'h0}} & `CR_COUNT) |
+                  ({5{rd == 5'd10 && cp0_wsel == 3'h0}} & `CR_ENTRYHI) |
+                  ({5{rd == 5'd11 && cp0_wsel == 3'h0}} & `CR_COMPARE) |
+                  ({5{rd == 5'd12 && cp0_wsel == 3'h0}} & `CR_STATUS) |
+                  ({5{rd == 5'd13 && cp0_wsel == 3'h0}} & `CR_CAUSE) |
+                  ({5{rd == 5'd14 && cp0_wsel == 3'h0}} & `CR_EPC) |
+                  ({5{rd == 5'd16 && cp0_wsel == 3'h0}} & `CR_CONFIG) |
+                  ({5{rd == 5'd16 && cp0_wsel == 3'h1}} & `CR_CONFIG1) ;
+
+assign valid_inst = (opcode == 6'b000000 && (func == 6'b100000 || func == 6'b100001 || func == 6'b100010 || func == 6'b100011 || func == 6'b101010 ||
+                                             func == 6'b101011 || func == 6'b011010 || func == 6'b011011 || func == 6'b011000 || func == 6'b011001 ||
+                                             func == 6'b100100 || func == 6'b100111 || func == 6'b100101 || func == 6'b100110 || func == 6'b000000 ||       
+                                             func == 6'b000100 || func == 6'b000010 || func == 6'b000111 || func == 6'b000011 || func == 6'b000010 ||
+                                             func == 6'b000110 || func == 6'b001000 || func == 6'b001001 || func == 6'b010000 || func == 6'b010010 ||
+                                             func == 6'b010001 || func == 6'b010011 || func == 6'b001101 || func == 6'b001100)) |
+                    (opcode == 6'b010000 && (rs == 5'b00000 || rs == 5'b00100)) |
+                    (opcode == 6'b010000 && func == 6'b011000) |
+                    (opcode == 6'b001000) |
+                    (opcode == 6'b001001) |
+                    (opcode == 6'b001010) |
+                    (opcode == 6'b001011) |
+                    (opcode == 6'b001100) |
+                    (opcode == 6'b001111 && rs == 5'b00000) |
+                    (opcode == 6'b001101) |
+                    (opcode == 6'b001110) |
+                    (opcode == 6'b000100) |
+                    (opcode == 6'b000101) |
+                    (opcode == 6'b000001 && (rt == 5'b00001 || rt == 5'b00000 || rt == 5'b10001 || rt == 5'b10000)) |
+                    (opcode == 6'b000111 && (rt == 5'b00000)) |
+                    (opcode == 6'b000110 && (rt == 5'b00000)) |
+                    (opcode == 6'b000010) |
+                    (opcode == 6'b000011) |
+                    (opcode == 6'b100000) |
+                    (opcode == 6'b100100) |
+                    (opcode == 6'b100001) |
+                    (opcode == 6'b100101) |
+                    (opcode == 6'b100011) |
+                    (opcode == 6'b101000) |
+                    (opcode == 6'b101001) |
+                    (opcode == 6'b101011);
+
+                    
+
+
+
+
+
+
+
+
+
 
 
 endmodule

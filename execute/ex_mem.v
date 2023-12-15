@@ -121,7 +121,7 @@ always @(posedge clk) begin
         ex_ram_wen <= id_ram_wen;
         ex_ram_sign <= id_ram_sign;
         ex_cp0_ex <= exe_cp0_ex | memory_cp0_ex;
-        ex_cp0_excode <= exe_cp0_excode ? exe_cp0_excode : memory_cp0_excode;
+        ex_cp0_excode <= exe_cp0_ex ? exe_cp0_excode : memory_cp0_excode;
         ex_cp0_badvaddr <= exe_cp0_ex ? id_cp0_badvaddr : memory_cp0_badvaddr;
         ex_cp0_we <= id_cp0_we;
         ex_cp0_bd <= id_cp0_bd;

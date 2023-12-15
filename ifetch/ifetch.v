@@ -7,24 +7,28 @@
 `define EX_OV    5'h0c // coprocessor unusable exception
 
 module ifetch(
-    input                      clk,
-    input                    rst_n,
-    input             hazard_stall,
-    input                exe_stall,
-    input              cond_branch,
-    input                int_flush,
-    input                ifetch_ex,
-    input  [31:0]           int_pc,
-    input  [31:0]             dest,
-    input                      jmp,
-    input  [2:0]                op,
-    output [31:0]               pc,
-    output [31:0]              npc,
-    output [31:0]   inst_sram_addr,
-    output          cond_exe_stall,
-    output                  cp0_ex,
-    output [4:0]        cp0_excode,
-    output [31:0]     cp0_badvaddr
+    input                                  clk,
+    input                                rst_n,
+    input                         hazard_stall,
+    input                            exe_stall,
+    input                          cond_branch,
+    input                 ie_mfc0_hazard_stall,
+    input                 im_mfc0_hazard_stall,
+    // input                 iw_mfc0_hazard_stall,
+    input                            int_flush,
+    input                            ifetch_ex,
+    input  [31:0]                       int_pc,
+    input  [31:0]                         dest,
+    input                                  jmp,
+    input  [2:0]                            op,
+    output [31:0]                           pc,
+    output [31:0]                          npc,
+    output [31:0]               inst_sram_addr,
+    output                      cond_exe_stall,
+    output                      cond_cp0_stall,
+    output                              cp0_ex,
+    output [4:0]                    cp0_excode,
+    output [31:0]                 cp0_badvaddr
 );
 
 reg [31:0]   saved_pc;
@@ -42,6 +46,9 @@ npc u_npc(
 
 pc u_pc(
     .clk(clk),
+    .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
+    .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
+    // .iw_mfc0_hazard_stall(iw_mfc0_hazard_stall),
     .hazard_stall(hazard_stall),
     .cond_branch(cond_branch),
     .exe_stall(exe_stall),
@@ -49,7 +56,8 @@ pc u_pc(
     .rst_n(rst_n),
     .din(npc),
     .pc(pc),
-    .cond_exe_stall(cond_exe_stall)
+    .cond_exe_stall(cond_exe_stall),
+    .cond_cp0_stall(cond_cp0_stall)
 );
 
 always @(posedge clk) begin
@@ -62,11 +70,11 @@ end
 
 
 
-assign cp0_ex = npc[1:0] != 2'b00;
+assign cp0_ex = pc[1:0] != 2'b00;
 assign cp0_excode = `EX_ADEL;
-assign cp0_badvaddr = cp0_ex ? npc : 32'h0;
+assign cp0_badvaddr = cp0_ex ? pc : 32'h0;
 
-assign inst_sram_addr = (cp0_ex | ifetch_ex) ? 32'h0 : npc;
+assign inst_sram_addr = ((npc[1:0] != 2'b00 | ifetch_ex) & ~int_flush) ? 32'h0 : npc;
 
 
 endmodule

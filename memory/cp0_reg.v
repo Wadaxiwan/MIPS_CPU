@@ -1,10 +1,12 @@
-`define cp0_int   5'h00 // interrupt
+`define EX_INT   5'h00 // interrupt
 `define EX_ADEL  5'h04 // address error exception (load or instruction fetch)
 `define EX_ADES  5'h05 // address error exception (store)
 `define EX_SYS   5'h08 // syscall exception
 `define EX_BP    5'h09 // breakpoint exception
 `define EX_RI    5'h0a // reserved instruction exception
 `define EX_OV    5'h0c // coprocessor unusable exception
+`define EX_ERET  5'h0d // eret exception
+
 `define CR_INDEX      5'h01 // TLB index
 `define CR_ENTRYLO0   5'h02 // TLB entry low 0
 `define CR_ENTRYLO1   5'h03 // TLB entry low 1
@@ -25,8 +27,8 @@ module cp0_reg(
     input                  eret_flush,
     input   [31:0]       cp0_badvaddr,  // bad virtual address
     input   [31:0]             cp0_pc,  // pc of this instruction
-    input   [4:0]          cp0_excode,  // exception code
-    input                      cp0_ex,  // this instruction has exception
+    input   [4:0]        cp0_excode_t,  // exception code
+    input                    cp0_ex_t,  // this instruction has exception
     input                      cp0_bd,  // this instruction is branch delay slot
     input                      cp0_we,
     input   [4:0]            cp0_addr,
@@ -43,21 +45,25 @@ wire [31:0]  epc_rdata;
 wire [31:0]  badvaddr_rdata;
 wire [31:0]  count_rdata;
 wire [31:0]  compare_rdata;
+wire         cp0_ex;
+wire [4:0]   cp0_excode;
 
 
 wire         mtc0_we;   // can write when cp0_we == 1 and cp0_ex == 0
 
+assign  cp0_ex = cp0_excode_t == `EX_ERET ? 1'b0 : cp0_ex_t;  // eret will not be seen as exception 
+assign  cp0_excode = cp0_excode_t == `EX_ERET ? 5'h0 : cp0_excode_t;  // eret will not be seen as exception
 
 assign int_flush = eret_flush | cp0_ex;  // flush when eret or exception (can be seen as the same in MIPS)
-assign int_pc = {32{eret_flush}} & epc_rdata |
-                {32{cp0_ex}} & 32'hBFC00380;
+assign int_pc = ({32{eret_flush}} & epc_rdata) |
+                ({32{cp0_ex}} & 32'hBFC00380);
 
 // @Breif: mtc0 inst write enable
 assign mtc0_we = cp0_we && ~cp0_ex;
 
 
 
-assign cp0_rdata = ({32{cp0_addr == `CR_COMPARE}} & status_rdata) |
+assign cp0_rdata = ({32{cp0_addr == `CR_COMPARE}} & compare_rdata) |
                    ({32{cp0_addr == `CR_CAUSE}} & cause_rdata) |
                    ({32{cp0_addr == `CR_EPC}} & epc_rdata) |
                    ({32{cp0_addr == `CR_BADVADDR}} & badvaddr_rdata) |
@@ -99,7 +105,7 @@ reg [31:0]  epc;        // r14 s0  read/write
 
 
 /*  Status  */
-assign status = {{9{1'b0}}, status_bev, {6{1'b0}}, status_im, {6{1'b0}}, status_exl, status_ie};
+assign status_rdata = {{9{1'b0}}, status_bev, {6{1'b0}}, status_im, {6{1'b0}}, status_exl, status_ie};
 
 
 // status bev
@@ -143,15 +149,15 @@ end
 
 
 /*  Cause  */
-assign cause = {cause_bd, cause_ti, {14{1'b0}}, cause_ip, 1'b0, cause_excode, {2{1'b0}}};
+assign cause_rdata = {cause_bd, cause_ti, {14{1'b0}}, cause_ip, 1'b0, cause_excode, {2{1'b0}}};
 
 // cause bd
 // @Warning: this only be update when status_exl == 0
 always @(posedge clk) begin
     if(~resetn) begin
         cause_bd <= 1'b0;
-    end else if(~status_exl && cp0_bd) begin
-        cause_bd <= 1'b1;
+    end else if(~status_exl && cp0_ex) begin
+        cause_bd <= cp0_bd;
     end 
 end
 
@@ -232,7 +238,7 @@ assign count_rdata = count;
 
 always @(posedge clk) begin
     if(~resetn) begin
-        tick <= 1'b0
+        tick <= 1'b0;
     end else begin
         tick <= ~tick;
     end

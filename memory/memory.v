@@ -10,6 +10,7 @@ module memory(
     input  [3:0]             id_ram_wen,
     input                     id_ram_we,
     input                     memory_ex,
+    input                     id_cp0_ex,
     output [3:0]          data_sram_wen,
     output [31:0]        data_sram_addr,
     input  [31:0]                ram_in,
@@ -37,7 +38,7 @@ assign ram_out = ({32{ex_ram_wen == 4'b1111}} & format_ram_in) |
 
 
 // write into ram (store)
-assign data_sram_wen = ({4{!memory_cp0_ex && id_ram_we}}) & (id_ram_wen << id_ram_addr[1:0]);  // prevent cp0 exception
+assign data_sram_wen = ({4{!(memory_cp0_ex | memory_ex) && id_ram_we}}) & (id_ram_wen << id_ram_addr[1:0]);  // prevent cp0 exception
 
 assign data_sram_addr  = memory_cp0_ex ? 32'h0 : ((id_ram_addr[31:28] >= 4'h8 && id_ram_addr[31:28] < 4'hC) ? {3'b0, id_ram_addr[28:0]}: id_ram_addr);
 
@@ -46,11 +47,12 @@ assign s_ram_out = ({32{id_ram_wen == 4'b1111}} & s_ram_in) |
                    ({32{id_ram_wen == 4'b0011}} & {2{s_ram_in[15:0]}}) ;
 
 assign memory_cp0_ex = (id_ram_wen == 4'b0011 && id_ram_addr[0] != 1'b0) |
-                       (id_ram_wen == 4'b1111 && id_ram_addr[1:0] != 2'b00);
+                       (id_ram_wen == 4'b1111 && id_ram_addr[1:0] != 2'b00) |
+                       id_cp0_ex;
 
 assign memory_cp0_excode = id_ram_we ? `EX_ADES : `EX_ADEL;
 
-assign memory_cp0_badvaddr = (memory_cp0_ex | memory_ex) ? id_ram_addr : 32'h0
+assign memory_cp0_badvaddr = (memory_cp0_ex | memory_ex) ? id_ram_addr : 32'h0;
 
 endmodule
 

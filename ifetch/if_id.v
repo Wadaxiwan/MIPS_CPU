@@ -3,9 +3,12 @@ module if_id(
         input                 clk,
         input                 resetn,
         input                 jmp,
-        input                 hazard_stall,
         input                 exe_stall,
+        input                 hazard_stall,
         input                 cond_exe_stall,
+        input                 cond_cp0_stall,
+        input                 ie_mfc0_hazard_stall,
+        input                 im_mfc0_hazard_stall,
         input                 int_flush,
         input                 cp0_ex,  // first in ifetch , this inst is a exception
         input    [4:0]        cp0_excode,  // first in ifetch
@@ -32,14 +35,14 @@ end
 
 
 always @(posedge clk) begin
-    if (resetn == 1'b0 | cond_exe_stall | int_flush) begin
+    if (resetn == 1'b0 | cond_exe_stall | cond_cp0_stall | int_flush) begin  // no need to flush when int_flush
         reg_if_pc <= 32'h0;
         reg_if_inst <= 32'h0;
         if_cp0_ex <= 1'b0;
         if_cp0_excode <= 5'h0;
         if_cp0_badvaddr <= 32'h0;
     end
-    else if (hazard_stall | exe_stall) begin
+    else if (hazard_stall | exe_stall | ie_mfc0_hazard_stall | im_mfc0_hazard_stall) begin
         reg_if_pc <= reg_if_pc;
         reg_if_inst <= reg_if_inst;
         if_cp0_ex <= if_cp0_ex;

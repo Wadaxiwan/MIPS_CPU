@@ -21,6 +21,7 @@
 `define EX_BP    5'h09 // breakpoint exception
 `define EX_RI    5'h0a // reserved instruction exception
 `define EX_OV    5'h0c // coprocessor unusable exception
+`define EX_ERET  5'h0d // eret exception
 
 module idecode(
     input                          clk,  // 时钟信号
@@ -30,6 +31,7 @@ module idecode(
     input                        rf_we,  // 是否写寄存器
     input                    if_cp0_ex,
     input [4:0]          if_cp0_excode, 
+    input                   idecode_ex,  // [TODO]
     output [31:0]               rdata1,  // 读取的寄存器数值1
     output [31:0]               rdata2,  // 读取的寄存器数值2
     output [1:0]                rs_sel,  // 选择rt的数据来源
@@ -66,9 +68,11 @@ wire                   cp0_ex;
 wire [4:0]             cp0_excode;
 
 
-assign cp0_eret_flush = inst == 32'h42000018;
-assign id_cp0_ex = cp0_ex | if_cp0_ex;
-assign id_cp0_excode = if_cp0_ex ? if_cp0_excode : cp0_excode;  // only keep the first exception
+assign id_cp0_eret_flush = inst == 32'h42000018;
+assign soft_interrupt = inst == 32'h1000ffff;
+
+assign id_cp0_ex = cp0_ex | if_cp0_ex | id_cp0_eret_flush | soft_interrupt;
+assign id_cp0_excode = if_cp0_ex ? if_cp0_excode : (id_cp0_eret_flush ? `EX_ERET : (soft_interrupt ? `EX_INT :cp0_excode ));  // only keep the first exception
 
 
 // Operation code and function code
@@ -85,12 +89,14 @@ assign rt = ( {5{opcode != 6'b000001 && opcode != 6'b000010 && opcode != 6'b0000
 assign rd = ({5{opcode == 6'b000000}} & inst[15:11]) |                          // R-R ALU / mfhi 
             ({5{opcode[5:3] == 3'b001}} & inst[20:16]) |                        // R-Imm
             ({5{opcode[5:3] == 3'b100}} & inst[20:16]) |                        // Load
-            ({5{opcode == 6'b010000 && inst[25:21] == 5'b00000}} & inst[20:16])
+            ({5{opcode == 6'b010000 && inst[25:21] == 5'b00000}} & inst[20:16]) |  // MFC0
             ({5{opcode == 6'b000001}} & 5'd31) |                                // bltzal / bgezal
             ({5{opcode == 6'b000011}} & 5'd31);                                 // JALR
 
 
 controller u_controller(
+    .clk(clk),
+    .resetn(resetn),
     .opcode(opcode),
     .func(func),
     .rs(inst[25:21]),

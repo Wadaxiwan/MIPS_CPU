@@ -88,6 +88,11 @@ wire             id_cp0_eret_flush;
 wire  [4:0]      exe_cp0_excode;    // update in execute
 wire             exe_cp0_ex;        // update in execute
 
+
+wire  [4:0]      jmp_cp0_excode;    // update in forward
+wire             jmp_cp0_ex;        // update in forward
+wire  [31:0]     jmp_cp0_badvaddr;
+
 wire  [4:0]      ex_cp0_excode;    // first in ifetch
 wire             ex_cp0_ex;        // first in ifetch , this inst is a exception
 wire  [31:0]     ex_cp0_badvaddr;  // first in ifetch
@@ -130,6 +135,7 @@ wire   [1:0]      ram_sign;
 wire  [31:0]         if_pc;
 wire  [31:0]           npc;
 wire  [31:0]       if_inst;
+wire              id_of_op;
 
 wire  [31:0]         id_pc;
 wire  [1:0]     id_hilo_we;
@@ -183,6 +189,8 @@ wire  [4:0]         mem_rd;  // rd register
 wire [63:0]   mem_hilo_out;
 wire            mem_rf_nwe;
 reg           hazard_stall;
+reg    ie_mfc0_hazard_stall;
+reg    im_mfc0_hazard_stall;
 wire             exe_stall;
 
 
@@ -190,6 +198,8 @@ wire             exe_stall;
 
 initial begin
     hazard_stall = 1'b0;
+    ie_mfc0_hazard_stall = 1'b0;
+    im_mfc0_hazard_stall = 1'b0;
 end
 
 always @(*) begin
@@ -201,13 +211,40 @@ always @(*) begin
     end
 end
 
+always @(*) begin
+    if(id_ex_rs_hazard_mfc0 | id_ex_rt_hazard_mfc0) begin
+        ie_mfc0_hazard_stall = 1'b1;
+    end
+    else begin
+        ie_mfc0_hazard_stall = 1'b0;
+    end
+end
+
+always @(*) begin
+    if(id_mem_rs_hazard_mfc0 | id_mem_rt_hazard_mfc0) begin
+        im_mfc0_hazard_stall = 1'b1;
+    end
+    else begin
+        im_mfc0_hazard_stall = 1'b0;
+    end
+end
+
+// always @(*) begin
+//     if(id_wb_rs_hazard_mfc0 | id_wb_rt_hazard_mfc0) begin
+//         iw_mfc0_hazard_stall = 1'b1;
+//     end
+//     else begin
+//         iw_mfc0_hazard_stall = 1'b0;
+//     end
+// end
 
 // 数据相关 R-R 
 wire   id_ex_rs_hazard_reg =  !id_is_ram & id_rf_nwe & id_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rs相同，只需要定向
 wire   id_ex_rt_hazard_reg =  !id_is_ram & id_rf_nwe & id_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;         // ID和EX段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rt相同，只需要定向
 wire   id_ex_hazard_mem    =  (id_is_ram & id_rf_nwe & if_inst[25:21] != 5'b00000 & id_rd == if_inst[25:21]) || 
                               (id_is_ram & id_rf_nwe & if_inst[20:16] != 5'b00000 & id_rd == if_inst[20:16]);   // 需要停顿，store 此时不需要判断 rt 是不是有冒险，可以等到下一个周期判断，此处可优化 [TODO]
-                              
+wire   id_ex_rs_hazard_mfc0 = id_rf_wsel == `WB_CP0 & id_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;  // 需要停顿两个周期，等到下一个周期会因为 id_mem_rt/rs_hazard_mfc0 再次被检测到从而再暂停，因此只需要暂停一个周期                          
+wire   id_ex_rt_hazard_mfc0 = id_rf_wsel == `WB_CP0 & id_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;
 
 
 // 访存数据相关
@@ -215,15 +252,19 @@ wire   id_mem_rs_hazard_mem = ex_is_ram & ex_rf_nwe & ex_rd == if_inst[25:21] & 
 wire   id_mem_rt_hazard_mem = ex_is_ram & ex_rf_nwe & ex_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;  // ID和MEM段相关，需要访存且需要写回的指令，并且写回的寄存器编号与当前译码指令的rt相同，只需要定向
 wire   id_mem_rs_hazard_reg = !ex_is_ram & ex_rf_nwe & ex_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;      // ID和MEM段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rs相同，只需要定向
 wire   id_mem_rt_hazard_reg = !ex_is_ram & ex_rf_nwe & ex_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;    // ID和MEM段相关，不需要访存但需要写回的指令，并且写回的寄存器编号与当前译码指令的rt相同，只需要定向
+wire   id_mem_rs_hazard_mfc0 = ex_rf_wsel == `WB_CP0 & ex_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;  // 需要停顿一个周期    
+wire   id_mem_rt_hazard_mfc0 = ex_rf_wsel == `WB_CP0 & ex_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;
+
+wire   id_wb_rs_hazard_mfc0 = mem_rf_wsel == `WB_CP0 & mem_rd == if_inst[25:21] & if_inst[25:21] != 5'b00000;  // 需要停顿一个周期    
+wire   id_wb_rt_hazard_mfc0 = mem_rf_wsel == `WB_CP0 & mem_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;
 
 
 assign inst = inst_sram_rdata;
 
-
 // CP0 exception
-assign ifetch_ex = if_cp0_ex | id_cp0_ex | ex_cp0_ex | memory_cp0_ex;
-assign idecode_ex = id_cp0_ex | ex_cp0_ex | memory_cp0_ex;
-assign ex_ex = ex_cp0_ex | memory_cp0_ex;
+assign ifetch_ex = if_cp0_ex | id_cp0_ex | ex_cp0_ex | mem_cp0_ex;
+assign idecode_ex = id_cp0_ex | ex_cp0_ex | mem_cp0_ex;
+assign ex_ex = ex_cp0_ex | mem_cp0_ex;
 
 if_id u_if_id(
     .clk(clk),
@@ -231,10 +272,13 @@ if_id u_if_id(
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
     .cond_exe_stall(cond_exe_stall),
+    .cond_cp0_stall(cond_cp0_stall),
+    .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
+    .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
     .int_flush(int_flush),
     .cp0_ex(cp0_ex),
     .cp0_excode(cp0_excode),
-    .cp0_badvaddr(cp0_badvaddr)
+    .cp0_badvaddr(cp0_badvaddr),
     .jmp(jmp),
     .pc(pc),
     .inst(inst),
@@ -247,6 +291,9 @@ if_id u_if_id(
 
 ifetch u_ifetch(
     .clk(clk),
+    .ifetch_ex(ifetch_ex),
+    .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
+    .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
     .hazard_stall(hazard_stall),
     .exe_stall(exe_stall),
     .cond_branch(cond_branch),
@@ -260,6 +307,7 @@ ifetch u_ifetch(
     .npc(npc),
     .inst_sram_addr(inst_sram_addr),
     .cond_exe_stall(cond_exe_stall),
+    .cond_cp0_stall(cond_cp0_stall),
     .cp0_ex(cp0_ex),
     .cp0_excode(cp0_excode),
     .cp0_badvaddr(cp0_badvaddr)
@@ -269,6 +317,7 @@ ifetch u_ifetch(
 idecode u_idecode(
     .clk(clk),
     .inst(if_inst),
+    .idecode_ex(idecode_ex),
     .if_cp0_ex(if_cp0_ex),
     .if_cp0_excode(if_cp0_excode),
     .rf_rd(mem_rd),
@@ -296,7 +345,7 @@ idecode u_idecode(
     .id_cp0_bd(cp0_bd),
     .id_cp0_we(cp0_we),
     .id_cp0_addr(cp0_addr),
-    .id_cp0_eret_flush(cp0_eret_flush)
+    .id_cp0_eret_flush(cp0_eret_flush),
     .of_op(of_op)
 );
 
@@ -319,6 +368,7 @@ forward u_forward(
     .ex_rf_wsel(ex_rf_wsel),
     .ex_rdata1(ex_rdata1),
     .ex_alu_out(ex_alu_out),
+    .cp0_out(cp0_rdata),
     .id_ex_hazard_mem(id_ex_hazard_mem),
     .id_ex_rs_hazard_reg(id_ex_rs_hazard_reg),
     .id_mem_rs_hazard_mem(id_mem_rs_hazard_mem),
@@ -326,6 +376,11 @@ forward u_forward(
     .id_ex_rt_hazard_reg(id_ex_rt_hazard_reg),
     .id_mem_rt_hazard_mem(id_mem_rt_hazard_mem),
     .id_mem_rt_hazard_reg(id_mem_rt_hazard_reg),
+    .id_wb_rs_hazard_mfc0(id_wb_rs_hazard_mfc0),
+    .id_wb_rt_hazard_mfc0(id_wb_rt_hazard_mfc0),
+    // .jmp_cp0_excode(jmp_cp0_excode),
+    // .jmp_cp0_ex(jmp_cp0_ex),
+    // .jmp_cp0_badvaddr(jmp_cp0_badvaddr),
     // .id_is_movz(id_is_movz),
     // .ex_is_movz(ex_is_movz),
     .out_rdata1(out_rdata1),
@@ -349,6 +404,7 @@ id_ex u_id_ex(
     .ram_wen(ram_wen),
     .ram_sign(ram_sign),
     .rf_wsel(rf_wsel),
+    .of_op(of_op),
     .rd(rd),
     .func(func),
     .opcode(opcode),
@@ -358,10 +414,15 @@ id_ex u_id_ex(
     .hilo_we(hilo_we),
     .exe_stall(exe_stall),
     .hazard_stall(hazard_stall),
+    .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
+    .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
     .int_flush(int_flush),
     .cp0_ex(ide_cp0_ex),
     .cp0_excode(ide_cp0_excode),
-    .cp0_badvaddr(if_cp0_badvaddr),
+    // .jmp_cp0_ex(jmp_cp0_ex),
+    // .jmp_cp0_excode(jmp_cp0_excode),
+    // .jmp_cp0_badvaddr(jmp_cp0_badvaddr),
+    .if_cp0_badvaddr(if_cp0_badvaddr),
     .cp0_we(cp0_we),
     .cp0_bd(cp0_bd),
     .cp0_addr(cp0_addr),
@@ -390,15 +451,18 @@ id_ex u_id_ex(
     .id_cp0_we(id_cp0_we),
     .id_cp0_bd(id_cp0_bd),
     .id_cp0_addr(id_cp0_addr),
-    .id_cp0_eret_flush(id_cp0_eret_flush)
+    .id_cp0_eret_flush(id_cp0_eret_flush),
+    .id_of_op(id_of_op)
 );
 
 execute u_execute(
     .clk(clk),
     .rst_n(resetn),
-    .of_op(of_op),
+    .id_of_op(id_of_op),
     .id_cp0_ex(id_cp0_ex),
     .id_cp0_excode(id_cp0_excode),
+    .ex_ex(ex_ex),
+    .int_flush(int_flush),
     .rf_wsel(id_rf_wsel),
     .hilo_we(id_hilo_we),
     .alu_op(id_alu_op),
@@ -479,7 +543,8 @@ memory u_memory(
     .id_ram_we(id_ram_we),
     .id_ram_wen(id_ram_wen),
     .id_ram_addr(alu_out),
-    .memory_ex(memory_ex),
+    .id_cp0_ex(id_cp0_ex),
+    .memory_ex(ex_ex),
     .data_sram_wen(data_sram_wen),
     .data_sram_addr(data_sram_addr),
     .ram_in(data_sram_rdata),
@@ -512,7 +577,7 @@ mem_wb u_mem_wb(
     .ex_cp0_we(ex_cp0_we),
     .ex_cp0_bd(ex_cp0_bd),
     .ex_cp0_addr(ex_cp0_addr),
-    .ex_cp0_eret_flush(ex_cp0_eret_flush)
+    .ex_cp0_eret_flush(ex_cp0_eret_flush),
     // .ex_ram_wen(ex_ram_wen),
     // .ex_ram_sign(ex_ram_sign),
     .mem_pc(mem_pc),
@@ -552,18 +617,20 @@ rf_mux u_rf_mux(
     .rf_nwe(mux_rf_we)
 );
 
+
 cp0_reg u_cp0_reg(
     .clk(clk),
     .resetn(resetn),
     .eret_flush(mem_cp0_eret_flush),
     .cp0_badvaddr(mem_cp0_badvaddr),
-    .cp0_excode(mem_cp0_excode),
-    .cp0_ex(mem_cp0_ex),
+    .cp0_excode_t(mem_cp0_excode),
+    .cp0_pc(mem_pc),
+    .cp0_ex_t(mem_cp0_ex),
     .cp0_bd(mem_cp0_bd),
     .cp0_we(mem_cp0_we),
     .cp0_addr(mem_cp0_addr),
     .cp0_wdata(mem_rdata2),
-    .ex_int(6'b0),
+    .cp0_int(6'b0),
     .cp0_rdata(cp0_rdata),
     .int_pc(int_pc),
     .int_flush(int_flush)
@@ -576,12 +643,8 @@ assign inst_sram_wen   = {4{1'b0}};
 assign inst_sram_wdata = 32'b0;
 
 assign debug_wb_pc = mem_pc;
-assign debug_wb_rf_wdata = rf_wdata;
-assign debug_wb_rf_wen = {4{mem_rf_nwe}};
+assign debug_wb_rf_wdata = mux_rf_wdata;
+assign debug_wb_rf_wen = {4{mux_rf_we}};
 assign debug_wb_rf_wnum = mem_rd;
-
-
-
-
 
 endmodule

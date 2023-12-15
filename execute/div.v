@@ -1,6 +1,8 @@
 module div(
     input                 clk,
+    input              resetn,
     input                sign,   // 0: unsigned, 1: signed
+    input           int_flush,
     input [31:0]            A,
     input [31:0]            B,
     input          sourceData,
@@ -47,6 +49,19 @@ initial begin
 end
 
 always @(posedge clk) begin
+    if(~resetn | int_flush) begin
+        dividend_tvalid <= 1'b0;
+        divisor_tvalid <= 1'b0;
+        dividendu_tvalid <= 1'b0;
+        divisoru_tvalid <= 1'b0;
+        dividend <= 32'h0;
+        divisor <= 32'h0;
+        hasData <= 1'b0;
+        dataOK <= 1'b0;
+        state <= 3'b000;
+        r_sign <= 1'b0;
+    end
+    else begin
     case (state)
         3'b000:
             if(sourceData) begin
@@ -57,7 +72,6 @@ always @(posedge clk) begin
                     divisoru_tvalid <= 1'b1;
                     dividendu_tvalid <= 1'b1;
                 end
-
                 r_sign <= sign;
                 hasData <= 1'b1;
                 dataOK <= 1'b0;
@@ -95,6 +109,7 @@ always @(posedge clk) begin
                 divisor <= 32'h0;
             end
     endcase
+    end
 end
 
 

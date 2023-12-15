@@ -43,9 +43,11 @@
 module execute(
     input                       clk,
     input                     rst_n,
-    input                     of_op,
+    input                  id_of_op,
+    input                 int_flush,
     input [4:0]       id_cp0_excode,    // update in execute
     input                 id_cp0_ex,  
+    input                     ex_ex,
     input [2:0]             rf_wsel,
     input [1:0]             hilo_we,
     input [4:0]              alu_op,
@@ -76,17 +78,19 @@ wire               hasData;
 wire                dataOK;  
 wire [63:0]        hilo_in;
 wire                    OF;
+wire [1:0]        hilo_nwe;
 
 
-assign exe_cp0_ex = id_cp0_ex | (of_op & OF);
+assign exe_cp0_ex = id_cp0_ex | (id_of_op & OF);
 assign exe_cp0_excode = id_cp0_ex ? id_cp0_excode : `EX_OV;
+assign hilo_nwe = ({2{~ex_ex}}) & ({2{dataOK}} | hilo_we);
 
 
 assign data1 = (rs_sel == `ALUB_EXT) ? imm : rdata1;
 assign data2 = (rt_sel == `ALUB_EXT) ? imm : rdata2;
 assign sourceData = alu_op == `DIV | alu_op == `DIVU;
-// assign stall = (rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & hasData & !dataOK;  // for non stall version (high performance)
-assign stall = hasData & !dataOK;
+// assign stall = int_flush ? 1'b0 : ((rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & hasData & !dataOK) ;  // for non stall version (high performance)
+assign stall = int_flush ? 1'b0 : hasData & !dataOK;
 
 
 assign hilo_in[63:32] = ({32{hilo_we[1]}} & AddF) |
@@ -97,7 +101,7 @@ assign hilo_in[31:0] = ({32{hilo_we[0]}} & alu_out) |
 alu u_alu(
     .A(data1),
     .B(data2),
-    .of_op(of_op),
+    .of_op(id_of_op),
     .Cin(1'b0),
     .Card(alu_op),
     .F(alu_out),
@@ -110,7 +114,9 @@ alu u_alu(
 
 div u_div(
     .clk(clk),
+    .resetn(rst_n),
     .sign(alu_op == `DIV),
+    .int_flush(int_flush),
     .A(data1),
     .B(data2),
     .sourceData(sourceData),
@@ -123,7 +129,7 @@ div u_div(
 hilo u_hilo(
     .clk(clk),
     .rst_n(rst_n),
-    .we({2{dataOK}} | hilo_we),
+    .we(hilo_nwe),
     .hilo_in(hilo_in),
     .hilo_out(hilo_out)
 );

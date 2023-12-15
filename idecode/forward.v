@@ -35,8 +35,11 @@ module forward(
     input  [31:0]            ex_rdata1,
     input  [31:0]           ex_alu_out,
     input  [63:0]          ex_hilo_out,
+    input  [31:0]              cp0_out,
     input  [2:0]            ex_rf_wsel,
     input  [2:0]            id_rf_wsel,
+    input         id_wb_rs_hazard_mfc0,
+    input         id_wb_rt_hazard_mfc0,
     input             id_ex_hazard_mem,
     input          id_ex_rs_hazard_reg,
     input         id_mem_rs_hazard_mem,
@@ -50,10 +53,14 @@ module forward(
     output reg [31:0]       out_rdata2,
     output [31:0]                 dest,
     output                 cond_branch,
+    // output                  jmp_cp0_ex,
+    // output     [4:0]    jmp_cp0_excode,
+    // output  [31:0]    jmp_cp0_badvaddr,
     output                         jmp  // 是否跳转
 );
 
-wire [31:0] pc4;
+wire [31:0]       pc4;
+// wire            jmp_t;  // 不包含合法性检验下是否需要跳转
 
 initial
 begin
@@ -91,6 +98,9 @@ always @(*) begin
             out_rdata1 = ex_alu_out;       // 当前指令不为 jalr 指令时，使用 EX 段的 alu_out 数据
         end
     end
+    else if(id_wb_rs_hazard_mfc0) begin
+        out_rdata1 = cp0_out;
+    end
     else begin
         out_rdata1 = rdata1;            // 当前指令不存在冒险时，使用 ID 段的 rdata1 数据
     end
@@ -124,7 +134,9 @@ always @(*) begin
         end else begin
             out_rdata2 = ex_alu_out;
         end
-    end 
+    end else if(id_wb_rt_hazard_mfc0) begin
+        out_rdata2 = cp0_out;
+    end
     else begin
         out_rdata2 = rdata2;
     end
@@ -132,6 +144,27 @@ end
 
 
 assign pc4 = pc + 32'h4;
+
+assign dest = ({32{alu_op == `BEQ}} & (pc4 + imm)) |
+             ({32{alu_op == `BNE}} &  (pc4 + imm)) |
+             ({32{alu_op == `BGEZ}} & (pc4 + imm)) |
+             ({32{alu_op == `BGTZ}} & (pc4 + imm)) |
+             ({32{alu_op == `BLEZ}} & (pc4 + imm)) |
+             ({32{alu_op == `BLTZ}} & (pc4 + imm)) |
+             ({32{npc_op == `NPC_J}} & ({pc4[31:28], imm[27:0]})) |
+             ({32{npc_op == `NPC_JR}} & out_rdata1) ;                      
+ // @Missing pc check and unvalid don't jmp!  Because target inst can't be reach so it's only be put in the jmp inst
+
+// assign jmp_cp0_ex = dest[1:0] != 2'b00 & jmp_t; 
+
+// assign jmp_cp0_excode = `EX_ADEL;
+
+// assign jmp_cp0_badvaddr = jmp_cp0_ex ? dest : 32'h0;
+
+
+assign cond_branch = (alu_op == `BEQ) | (alu_op == `BNE) | (alu_op == `BGEZ) | 
+                     (alu_op == `BGTZ) | (alu_op == `BLEZ) | (alu_op == `BLTZ) ;
+
 
 assign jmp = ({alu_op == `BEQ} & out_rdata1 == out_rdata2) |
              ({alu_op == `BNE} & out_rdata1 != out_rdata2) |
@@ -142,17 +175,7 @@ assign jmp = ({alu_op == `BEQ} & out_rdata1 == out_rdata2) |
              ({npc_op == `NPC_J}) |
              ({npc_op == `NPC_JR}) ;
 
-assign dest = ({32{alu_op == `BEQ}} & (pc4 + imm)) |
-             ({32{alu_op == `BNE}} &  (pc4 + imm)) |
-             ({32{alu_op == `BGEZ}} & (pc4 + imm)) |
-             ({32{alu_op == `BGTZ}} & (pc4 + imm)) |
-             ({32{alu_op == `BLEZ}} & (pc4 + imm)) |
-             ({32{alu_op == `BLTZ}} & (pc4 + imm)) |
-             ({32{npc_op == `NPC_J}} & ({pc4[31:28], imm[27:0]})) |
-             ({32{npc_op == `NPC_JR}} & out_rdata1) ;
-
-assign cond_branch = (alu_op == `BEQ) | (alu_op == `BNE) | (alu_op == `BGEZ) | 
-                     (alu_op == `BGTZ) | (alu_op == `BLEZ) | (alu_op == `BLTZ) ;
+// assign jmp = jmp_cp0_ex ? 1'b0 : jmp_t;
 
 endmodule
 
