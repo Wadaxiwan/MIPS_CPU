@@ -18,6 +18,7 @@ reg [31:0] pc_addr;
 initial begin
     pc_addr = 32'hBFC00000;
     cond_exe_stall = 1'b0;
+    cond_cp0_stall = 1'b0;
 end
 
 always @(posedge clk) begin

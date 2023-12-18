@@ -33,6 +33,9 @@ module ifetch(
 
 reg [31:0]   saved_pc;
 
+initial begin
+    saved_pc = 32'hBFC00000;
+end
 
 npc u_npc(
     .pc(pc),

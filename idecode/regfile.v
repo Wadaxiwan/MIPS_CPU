@@ -12,8 +12,6 @@ module regfile(
 );
 
 reg [31:0] regfile[31:0];
-reg [31:0] regdata1;
-reg [31:0] regdata2;
 
 // initial begin
 // //    $readmemh("../../../../lab_1.data/additional_reg_data1",regfile);

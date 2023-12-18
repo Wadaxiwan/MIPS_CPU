@@ -23,7 +23,6 @@ module memory(
 );
 
 wire [31:0]  format_ram_in;
-wire [31:0]  format_sram_in;
 
 wire [5:0] ex_ram_addr_bias = ex_ram_addr << 3;
 

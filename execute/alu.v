@@ -30,10 +30,8 @@
 module alu (
     input  [31:0]   A   ,
     input  [31:0]   B   ,
-    input           Cin ,
     input  [4 :0]   Card,
-   input            of_op,
-
+    input           of_op,
     output [31:0]   F   ,
     output [31:0]   AddF,  // Suit for HILO
     output          Cout,
@@ -58,28 +56,24 @@ module alu (
     wire [31:0] slt_result;
     wire [31:0] sltu_result;
     wire [31:0] sll_result;
-    wire [31:0] eq_result;
+    // wire [31:0] eq_result;
     wire [31:0] lui_result;
     wire [63:0] mult_result;
     wire [63:0] multu_result;
-    wire [31:0] beq_result;
-    wire [31:0] bne_result;
-    wire [31:0] bgez_result;
-    wire [31:0] bftz_result;
-    wire [31:0] blez_result;
-    wire [31:0] bltz_result;
-    wire [31:0] li_result;
+    // wire [31:0] beq_result;
+    // wire [31:0] bne_result;
+    // wire [31:0] bgez_result;
+    // wire [31:0] bftz_result;
+    // wire [31:0] blez_result;
+    // wire [31:0] bltz_result;
 
     wire        add_cout;
     wire        addu_cout;
     wire        sub_cout;
     wire        subu_cout;
-    wire        resub_cout;
-    wire        resub_cin_cout;
-
 
     assign {add_cout, add_result}  = {A[31], A} + {B[31], B};
-    assign {addu_count, addu_result}  = A + B ;
+    assign {addu_cout, addu_result}  = A + B ;
     assign {sub_cout, sub_result}  = {A[31], A} - {B[31], B};
     assign {subu_cout, subu_result}  = A - B;
     assign eq_b_result = B;
@@ -98,7 +92,6 @@ module alu (
     assign lui_result = B;
     assign mult_result = $signed(A) * $signed(B);
     assign multu_result = A * B;
-    assign li_result = { B[15:0], {16{B[15]}} };
 
     
     assign  OF  =   ({Card == `ADD} & add_cout != add_result[31]) |
@@ -121,7 +114,6 @@ module alu (
                     ({32{Card == `SLT}} & slt_result) |
                     ({32{Card == `SLTU}} & sltu_result) |
                     ({32{Card == `SLL}} & sll_result) |
-                    ({32{Card == `BEQ}} & beq_result) |
                     ({32{Card == `LUI}} & lui_result) |
                     ({32{Card == `MULT}} & mult_result[31:0]) |
                     ({32{Card == `MULTU}} & multu_result[31:0]);

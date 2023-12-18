@@ -32,6 +32,7 @@
 `define BLEZ      5'b11010 
 `define BLTZ      5'b11011
 `define SLTU      5'b11100 
+
 `define NPC_PC4   3'b000
 `define NPC_B     3'b010
 `define NPC_J     3'b011   
@@ -116,7 +117,6 @@ module controller(
     output [2:0]         sext_op,
     output                ram_we,
     output                is_ram,
-    output [2:0]          ram_op,
     output                 of_op,
     output reg            cp0_bd,    
     output                cp0_we,
@@ -126,6 +126,10 @@ module controller(
 );
 
 
+initial begin
+    cp0_bd = 1'b0;
+end
+
 always @(posedge clk) begin
     if (~resetn) begin
         cp0_bd <= 1'b0;
@@ -134,8 +138,7 @@ always @(posedge clk) begin
     end
 end
 
-wire  unvalid_inst;
-
+wire valid_inst;
 
 // 根据指令的类型决定PC跳转的方向
 assign npc_op = ({3{opcode == 6'b000000 && (func != 5'b001000 || func != 5'b001001) }} & `NPC_PC4) |    // Except JR or JALR
@@ -256,12 +259,6 @@ assign alu_op = ({5{ opcode == 6'b000000 && func == 6'b100000 }} & `ADD) |
                 ({5{ opcode[5:3] == 3'b100 }} & `ADD) |
                 ({5{ opcode[5:3] == 3'b101 }} & `ADD);
 
-
-assign ram_op = ({3{ opcode == 6'b100000 || opcode == 6'b101000 }} & `RAM_B) |
-                ({3{ opcode == 6'b100100 }} & `RAM_BU) |
-                ({3{ opcode == 6'b100001|| opcode == 6'b101001 }} & `RAM_H) |
-                ({3{ opcode == 6'b100101 }} & `RAM_HU) |
-                ({3{ opcode == 6'b100011|| opcode == 6'b101011 }} & `RAM_W);
 
 assign of_op =  ( opcode == 6'b000000 && func == 6'b100000 ) |
                 ( opcode == 6'b001000 ) |

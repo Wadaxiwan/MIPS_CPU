@@ -9,6 +9,7 @@
 `define NPC_B     3'b010
 `define NPC_J     3'b011   
 `define NPC_JR    3'b100 
+
 `define WB_ALU    3'b001
 `define WB_RS     3'b010 
 `define WB_RAM    3'b011
@@ -47,8 +48,6 @@ module forward(
     input          id_ex_rt_hazard_reg,
     input         id_mem_rt_hazard_mem,
     input         id_mem_rt_hazard_reg,
-    // input                   id_is_movz,
-    // input                   ex_is_movz,
     output reg [31:0]       out_rdata1,
     output reg [31:0]       out_rdata2,
     output [31:0]                 dest,

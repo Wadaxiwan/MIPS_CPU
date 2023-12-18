@@ -1,41 +1,41 @@
 module id_ex(
-    input                                clk,   // clock
-    input                             resetn,   // resetn
-    input       [31:0]                 if_pc,   // pc data from if/id pipe
-    input       [31:0]                 rdata1,  //  reg1 data include forwarding
-    input       [31:0]                 rdata2,  //  reg2 data include forwarding
-    input       [1:0]                  rs_sel,  //  rs select
-    input       [1:0]                  rt_sel,  //  rt select
-    input       [31:0]                 imm,     //  imm gen data
-    input       [4:0]                  alu_op,  // alu op generate by controller
-    input                             ram_we,   // ram write enable generate by controller
-    input       [3:0]                ram_wen,   // ram read/write bit generate by controller
-    input       [1:0]               ram_sign,   // ram raad/write sign generate by controller
-    input       [2:0]                rf_wsel,   // rd write sel generate by controller
-    input       [4:0]                     rd,   // rd reg addr generate by controller
-    input       [5:0]                   func,   // function code generate by controller
-    input       [5:0]                 opcode,   // operation code generate by controller
-    input                             rf_nwe,   // rd write enable generate by controller
-    input                             is_ram,   // the instruction is ram instruction
-    input                            is_movz,   // the instruction is movz instruction
-    input                       hazard_stall,   // id/ex hazard 
-    input                          exe_stall,   // ex/mem stall
-    input                              of_op,
-    input       [1:0]                hilo_we,   // hilo write enable generate by controller
+    input                                 clk,   // clock
+    input                              resetn,   // resetn
+    input       [31:0]                  if_pc,   // pc data from if/id pipe
+    input       [31:0]                  rdata1,  //  reg1 data include forwarding
+    input       [31:0]                  rdata2,  //  reg2 data include forwarding
+    input       [1:0]                   rs_sel,  //  rs select
+    input       [1:0]                   rt_sel,  //  rt select
+    input       [31:0]                     imm,  //  imm gen data
+    input       [4:0]                   alu_op,  // alu op generate by controller
+    input                               ram_we,   // ram write enable generate by controller
+    input       [3:0]                  ram_wen,   // ram read/write bit generate by controller
+    input       [1:0]                 ram_sign,   // ram raad/write sign generate by controller
+    input       [2:0]                  rf_wsel,   // rd write sel generate by controller
+    input       [4:0]                       rd,   // rd reg addr generate by controller
+    input       [5:0]                     func,   // function code generate by controller
+    input       [5:0]                   opcode,   // operation code generate by controller
+    input                               rf_nwe,   // rd write enable generate by controller
+    input                               is_ram,   // the instruction is ram instruction
+    input                         hazard_stall,   // id/ex hazard 
+    input                            exe_stall,   // ex/mem stall
+    input                                of_op,
+    input       [1:0]                  hilo_we,   // hilo write enable generate by controller
 
     input                            int_flush,
     input                               cp0_ex,  // first in ifetch , this inst is a exception
-    input      [4:0]                cp0_excode,  // first in ifetch
+    input       [4:0]               cp0_excode,  // first in ifetch
     // input                           jmp_cp0_ex,
     // input      [4:0]            jmp_cp0_excode,
     // input      [31:0]         jmp_cp0_badvaddr,
-    input      [31:0]          if_cp0_badvaddr,  // first in ifetch
+    input       [31:0]         if_cp0_badvaddr,  // first in ifetch
     input                               cp0_we,  // first in idecode
     input                               cp0_bd,  // first in idecode , this inst is a branch delay slot
-    input      [4:0]                  cp0_addr,  // first in idecode
+    input       [4:0]                 cp0_addr,  // first in idecode
     input                       cp0_eret_flush,
     input                 ie_mfc0_hazard_stall,
     input                 im_mfc0_hazard_stall,
+    input                        int_div_stall,
 
     output reg                        id_of_op,
     output reg  [31:0]                   id_pc,   // pc data to id/ex pipe
@@ -52,7 +52,6 @@ module id_ex(
     output reg  [5:0]                id_opcode,  //  operation code to id/ex pipe
     output reg                       id_rf_nwe,  // rd write enable to id/ex pipe
     output reg                       id_is_ram,  // the instruction is ram instruction to id/ex pipe
-    output reg                      id_is_movz,   // the instruction is movz instruction to id/ex pipe
     output reg  [3:0]               id_ram_wen,
     output reg  [1:0]              id_ram_sign,
     output reg  [1:0]               id_hilo_we,  //  reg1(rs) data to id/ex pipe
@@ -82,7 +81,6 @@ initial begin
     id_opcode = 6'h0;
     id_rf_nwe = 1'b0;
     id_is_ram = 1'b0;
-    id_is_movz = 1'b0;
     id_hilo_we = 2'h0;
     id_ram_wen = 4'h0;
     id_ram_sign = 2'h0;
@@ -111,7 +109,6 @@ always @(posedge clk) begin
         id_opcode <= 6'h0; 
         id_rf_nwe <= 1'b0; 
         id_is_ram <= 1'b0; 
-        id_is_movz <= 1'b0;
         id_rdata1 <= 32'h0;
         id_rdata2 <= 32'h0;
         id_hilo_we <= 2'h0;
@@ -127,7 +124,7 @@ always @(posedge clk) begin
         id_of_op <= 1'h0;
     end
     // save the data to id/ex pipe register
-    else if(!exe_stall) begin
+    else if(!exe_stall & !int_div_stall) begin
         id_pc <= if_pc;
         id_rt_sel <= rt_sel;
         id_rs_sel <= rs_sel;
@@ -140,7 +137,6 @@ always @(posedge clk) begin
         id_opcode <= opcode;
         id_rf_nwe <= rf_nwe;
         id_is_ram <= is_ram;
-        id_is_movz <= is_movz;
         id_rdata1 <= rdata1;
         id_rdata2 <= rdata2;
         id_hilo_we <= hilo_we;
@@ -159,7 +155,5 @@ always @(posedge clk) begin
         id_of_op <= of_op;
     end
 end
-
-
 
 endmodule

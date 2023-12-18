@@ -5,8 +5,10 @@ module ex_mem(
     input       [31:0]                 id_pc,  // pc data from id/ex seg reg
     input       [31:0]               alu_out,  // alu out generate by execute
     input       [63:0]              hilo_out,  // ram out generate by execute
-    input                                 br,  // zero generate by execute
+    input                         div_finish, 
     input                          int_flush,
+    input                      int_div_stall,
+    input                            cp0_tag,
     input       [4:0]         exe_cp0_excode,  // update in execute
     input                         exe_cp0_ex,  // update in execute
     input       [4:0]      memory_cp0_excode,  // update in memory
@@ -24,7 +26,6 @@ module ex_mem(
     input                          id_ram_we,  // ram write enable from id/ex seg reg
     input                          id_rf_nwe,  // rd write enable  from id/ex seg reg (deperated from execute owing to the remove of movz)
     input                          id_is_ram,  // the is ram instruction from id/ex seg reg
-    input                         id_is_movz,  // the is movz instruction from id/ex seg reg
     input      [3:0]              id_ram_wen,
     input      [1:0]             id_ram_sign,
     input      [5:0]               id_opcode,
@@ -42,7 +43,6 @@ module ex_mem(
     output reg                     ex_ram_we,  // ram write enable to ex/mem seg reg
     output reg                     ex_rf_nwe,  // rd write enable to ex/mem seg reg
     output reg                     ex_is_ram,  // the is ram instruction to ex/mem seg reg
-    output reg                    ex_is_movz,  // the is movz instruction to ex/mem seg reg
     output reg [3:0]              ex_ram_wen,
     output reg [1:0]             ex_ram_sign,
     output reg                     ex_cp0_ex,  
@@ -51,7 +51,8 @@ module ex_mem(
     output reg                     ex_cp0_we,
     output reg                     ex_cp0_bd,
     output reg [4:0]             ex_cp0_addr,
-    output reg             ex_cp0_eret_flush
+    output reg             ex_cp0_eret_flush,
+    output reg                    ex_cp0_tag
 );
 
 
@@ -64,7 +65,7 @@ initial begin
     ex_rdata2 = 32'h0;
     ex_ram_we = 1'b0;
     ex_rf_nwe = 1'b0;
-    ex_is_movz = 1'b0;
+    ex_is_ram = 1'b0;
     ex_hilo_out = 64'h0;
     ex_opcode = 6'h0;
     ex_func = 6'h0;
@@ -77,6 +78,7 @@ initial begin
     ex_cp0_bd = 1'b0;
     ex_cp0_addr = 5'h0;
     ex_cp0_eret_flush = 1'b0;
+    ex_cp0_tag = 1'b0;
 end
 
 always @(posedge clk) begin
@@ -90,7 +92,6 @@ always @(posedge clk) begin
         ex_ram_we <= 1'b0;
         ex_rf_nwe <= 1'b0;
         ex_is_ram <= 1'b0;
-        ex_is_movz <= 1'b0;
         ex_hilo_out <= 64'h0;
         ex_ram_wen <= 4'h0;
         ex_ram_sign <= 2'h0;
@@ -103,8 +104,9 @@ always @(posedge clk) begin
         ex_cp0_bd <= 1'b0;
         ex_cp0_addr <= 5'h0;
         ex_cp0_eret_flush <= 1'b0;
+        ex_cp0_tag <= 1'b0;
     end
-    else begin
+    else if(~int_div_stall) begin
         ex_pc <= id_pc;
         ex_alu_out <= alu_out;  
         ex_rf_wsel <= id_rf_wsel;
@@ -114,7 +116,6 @@ always @(posedge clk) begin
         ex_ram_we <= id_ram_we;  
         ex_rf_nwe <= id_rf_nwe;    
         ex_is_ram <= id_is_ram;  
-        ex_is_movz <= id_is_movz;
         ex_hilo_out <= hilo_out;
         ex_opcode <= id_opcode;
         ex_func <= id_func;
@@ -127,6 +128,7 @@ always @(posedge clk) begin
         ex_cp0_bd <= id_cp0_bd;
         ex_cp0_addr <= id_cp0_addr;
         ex_cp0_eret_flush <= id_cp0_eret_flush;
+        ex_cp0_tag <= div_finish ? 1'b0 : cp0_tag;
     end
 end
 

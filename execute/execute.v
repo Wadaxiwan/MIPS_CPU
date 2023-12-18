@@ -61,10 +61,15 @@ module execute(
     output                     zero,
     output                    stall,
     output [4:0]     exe_cp0_excode,    
-    output               exe_cp0_ex  
+    output               exe_cp0_ex,
+    output                  cp0_tag,
+    output               div_finish
     // input               rf_nwe,
     // output              rf_nwef
 );
+
+reg                div_tag;
+
 
 wire                  Cout;
 wire [31:0]          data1;
@@ -75,22 +80,39 @@ wire [31:0]       quotient;
 wire [31:0]      remainder;  
 wire            sourceData;  
 wire               hasData;
-wire                dataOK;  
+wire                dataOK;
 wire [63:0]        hilo_in;
 wire                    OF;
 wire [1:0]        hilo_nwe;
+
+initial begin
+    div_tag = 1'b0;
+end
+
+always @(posedge clk) begin
+    if (!rst_n | int_flush) begin
+        div_tag <= 1'b0;
+    end  else if(alu_op == `DIV | alu_op == `DIVU) begin
+        div_tag <= 1'b1;
+    end else if (div_finish) begin
+        div_tag <= 1'b0;
+    end else begin
+        div_tag <= div_tag;
+    end
+end
 
 
 assign exe_cp0_ex = id_cp0_ex | (id_of_op & OF);
 assign exe_cp0_excode = id_cp0_ex ? id_cp0_excode : `EX_OV;
 assign hilo_nwe = ({2{~ex_ex}}) & ({2{dataOK}} | hilo_we);
 
-
 assign data1 = (rs_sel == `ALUB_EXT) ? imm : rdata1;
 assign data2 = (rt_sel == `ALUB_EXT) ? imm : rdata2;
 assign sourceData = alu_op == `DIV | alu_op == `DIVU;
-// assign stall = int_flush ? 1'b0 : ((rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & hasData & !dataOK) ;  // for non stall version (high performance)
-assign stall = int_flush ? 1'b0 : hasData & !dataOK;
+assign stall = int_flush ? 1'b0 : ((rf_wsel == `WB_HI | rf_wsel == `WB_LO | hilo_we != 2'b0) & ~div_finish) ;  // for non stall version (high performance)
+// assign stall = int_flush ? 1'b0 : div_finish;
+assign cp0_tag = div_tag;
+assign div_finish = ~hasData | dataOK;
 
 
 assign hilo_in[63:32] = ({32{hilo_we[1]}} & AddF) |
@@ -102,7 +124,6 @@ alu u_alu(
     .A(data1),
     .B(data2),
     .of_op(id_of_op),
-    .Cin(1'b0),
     .Card(alu_op),
     .F(alu_out),
     .OF(OF),
@@ -133,6 +154,8 @@ hilo u_hilo(
     .hilo_in(hilo_in),
     .hilo_out(hilo_out)
 );
+
+
 
 endmodule
 

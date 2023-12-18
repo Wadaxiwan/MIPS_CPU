@@ -10,10 +10,7 @@
 `define BGTZ      5'b11010 
 `define BLEZ      5'b11011 
 `define BLTZ      5'b11100
-`define NPC_PC4   3'b000
-`define NPC_B     3'b010
-`define NPC_J     3'b011   
-`define NPC_JR    3'b100 
+
 `define EX_INT   5'h00 // interrupt
 `define EX_ADEL  5'h04 // address error exception (load or instruction fetch)
 `define EX_ADES  5'h05 // address error exception (store)
@@ -25,6 +22,7 @@
 
 module idecode(
     input                          clk,  // 时钟信号
+    input                       resetn,
     input  [31:0]                 inst,  // 指令
     input  [4:0]                 rf_rd,  // 写寄存器堆编号
     input  [31:0]             rf_wdata,  // 写寄存器数据
@@ -41,12 +39,11 @@ module idecode(
     output [2:0]                npc_op,  // NPC操作
     output                      ram_we,  // 写存储使能信号
     output [2:0]               rf_wsel,  // 选择写回寄存器的数据来源
-    output                      rf_nwe,  // 通用寄存器组写使能信号（但不包含movz指令的判定）
+    output                      rf_nwe,  // 通用寄存器组写使能信号
     output [4:0]                    rd,  // 当前译码指令的目的寄存器编号
     output [5:0]                  func,  // 当前译码指令的功能码
     output [5:0]                opcode,  // 当前译码指令的操作码
     output                      is_ram,  // 当前指令是否访存
-    output [2:0]                ram_op,  // 当前指令访存行为
     output                       of_op,  // 当前指令是否需要overflow判断
     output [1:0]               hilo_we,   // HILO写使能信号
     output [3:0]               ram_wen,
@@ -114,7 +111,6 @@ controller u_controller(
     .sext_op(sext_op),
     .ram_we(ram_we),
     .is_ram(is_ram),
-    .ram_op(ram_op),
     .hilo_we(hilo_we),
     .of_op(of_op),
     .cp0_ex(cp0_ex),

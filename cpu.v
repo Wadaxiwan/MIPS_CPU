@@ -87,11 +87,8 @@ wire             id_cp0_eret_flush;
 
 wire  [4:0]      exe_cp0_excode;    // update in execute
 wire             exe_cp0_ex;        // update in execute
-
-
-wire  [4:0]      jmp_cp0_excode;    // update in forward
-wire             jmp_cp0_ex;        // update in forward
-wire  [31:0]     jmp_cp0_badvaddr;
+wire             cp0_tag;
+wire             div_finish;
 
 wire  [4:0]      ex_cp0_excode;    // first in ifetch
 wire             ex_cp0_ex;        // first in ifetch , this inst is a exception
@@ -100,6 +97,7 @@ wire             ex_cp0_we;        // first in ifetch
 wire             ex_cp0_bd;        // first in idecode , this inst is a branch delay slot
 wire  [4:0]      ex_cp0_addr;      // first in idecode
 wire             ex_cp0_eret_flush;
+wire             ex_cp0_tag;
 
 wire  [4:0]      memory_cp0_excode;    // first in ifetch
 wire             memory_cp0_ex;        // first in ifetch , this inst is a exception
@@ -112,6 +110,7 @@ wire             mem_cp0_we;        // first in ifetch
 wire             mem_cp0_bd;        // first in idecode , this inst is a branch delay slot
 wire  [4:0]      mem_cp0_addr;      // first in idecode
 wire             mem_cp0_eret_flush;
+wire             mem_cp0_tag;
 
 
 /* CP0 End */
@@ -152,7 +151,6 @@ wire  [5:0]        id_func;
 wire  [5:0]      id_opcode;  
 wire             id_rf_nwe;
 wire             id_is_ram;
-wire            id_is_movz;
 wire   [3:0]    id_ram_wen;
 wire   [1:0]   id_ram_sign;
 wire  [31:0]    out_rdata1;
@@ -171,27 +169,24 @@ wire [31:0]      ex_rdata2;
 wire             ex_ram_we;  // ram write enable generate by controller
 wire             ex_rf_nwe;
 wire             ex_is_ram;
-wire            ex_is_movz;
 wire [63:0]    ex_hilo_out;
-wire [31:0]      s_ram_out;
 
-wire  [3:0]    mem_ram_wen;
-wire  [1:0]   mem_ram_sign;
-wire  [5:0]       mem_func;  
-wire  [5:0]     mem_opcode; 
-wire [31:0]         mem_pc;
-wire [31:0]    mem_alu_out;
-wire [31:0]    mem_ram_out;
-wire [31:0]     mem_rdata1;
-wire [31:0]     mem_rdata2;
-wire  [2:0]    mem_rf_wsel;
-wire  [4:0]         mem_rd;  // rd register
-wire [63:0]   mem_hilo_out;
-wire            mem_rf_nwe;
-reg           hazard_stall;
+wire  [5:0]        mem_func;  
+wire  [5:0]      mem_opcode; 
+wire [31:0]          mem_pc;
+wire [31:0]     mem_alu_out;
+wire [31:0]     mem_ram_out;
+wire [31:0]      mem_rdata1;
+wire [31:0]      mem_rdata2;
+wire  [2:0]     mem_rf_wsel;
+wire  [4:0]          mem_rd;  // rd register
+wire [63:0]    mem_hilo_out;
+wire             mem_rf_nwe;
+reg            hazard_stall;
 reg    ie_mfc0_hazard_stall;
 reg    im_mfc0_hazard_stall;
-wire             exe_stall;
+wire              exe_stall;
+wire          int_div_stall;
 
 
 
@@ -200,33 +195,6 @@ initial begin
     hazard_stall = 1'b0;
     ie_mfc0_hazard_stall = 1'b0;
     im_mfc0_hazard_stall = 1'b0;
-end
-
-always @(*) begin
-    if(id_ex_hazard_mem) begin
-        hazard_stall = 1'b1;
-    end
-    else begin
-        hazard_stall = 1'b0;
-    end
-end
-
-always @(*) begin
-    if(id_ex_rs_hazard_mfc0 | id_ex_rt_hazard_mfc0) begin
-        ie_mfc0_hazard_stall = 1'b1;
-    end
-    else begin
-        ie_mfc0_hazard_stall = 1'b0;
-    end
-end
-
-always @(*) begin
-    if(id_mem_rs_hazard_mfc0 | id_mem_rt_hazard_mfc0) begin
-        im_mfc0_hazard_stall = 1'b1;
-    end
-    else begin
-        im_mfc0_hazard_stall = 1'b0;
-    end
 end
 
 // always @(*) begin
@@ -259,12 +227,39 @@ wire   id_wb_rs_hazard_mfc0 = mem_rf_wsel == `WB_CP0 & mem_rd == if_inst[25:21] 
 wire   id_wb_rt_hazard_mfc0 = mem_rf_wsel == `WB_CP0 & mem_rd == if_inst[20:16] & if_inst[20:16] != 5'b00000;
 
 
+always @(*) begin
+    if(id_ex_hazard_mem) begin
+        hazard_stall = 1'b1;
+    end
+    else begin
+        hazard_stall = 1'b0;
+    end
+end
+
+always @(*) begin
+    if(id_ex_rs_hazard_mfc0 | id_ex_rt_hazard_mfc0) begin
+        ie_mfc0_hazard_stall = 1'b1;
+    end
+    else begin
+        ie_mfc0_hazard_stall = 1'b0;
+    end
+end
+
+always @(*) begin
+    if(id_mem_rs_hazard_mfc0 | id_mem_rt_hazard_mfc0) begin
+        im_mfc0_hazard_stall = 1'b1;
+    end
+    else begin
+        im_mfc0_hazard_stall = 1'b0;
+    end
+end
+
 assign inst = inst_sram_rdata;
 
 // CP0 exception
 assign ifetch_ex = if_cp0_ex | id_cp0_ex | ex_cp0_ex | mem_cp0_ex;
 assign idecode_ex = id_cp0_ex | ex_cp0_ex | mem_cp0_ex;
-assign ex_ex = ex_cp0_ex | mem_cp0_ex;
+assign ex_ex = (ex_cp0_ex & ~ex_cp0_tag) | (mem_cp0_ex & ~mem_cp0_tag);   // 当 ex/mem 和 mem/wb 都没有异常或都带上了除法标记（意味着在除法之后的指令） 除法允许写入hilo寄存器
 
 if_id u_if_id(
     .clk(clk),
@@ -273,6 +268,7 @@ if_id u_if_id(
     .exe_stall(exe_stall),
     .cond_exe_stall(cond_exe_stall),
     .cond_cp0_stall(cond_cp0_stall),
+    .int_div_stall(int_div_stall),
     .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
     .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
     .int_flush(int_flush),
@@ -316,6 +312,7 @@ ifetch u_ifetch(
 
 idecode u_idecode(
     .clk(clk),
+    .resetn(resetn),
     .inst(if_inst),
     .idecode_ex(idecode_ex),
     .if_cp0_ex(if_cp0_ex),
@@ -378,11 +375,6 @@ forward u_forward(
     .id_mem_rt_hazard_reg(id_mem_rt_hazard_reg),
     .id_wb_rs_hazard_mfc0(id_wb_rs_hazard_mfc0),
     .id_wb_rt_hazard_mfc0(id_wb_rt_hazard_mfc0),
-    // .jmp_cp0_excode(jmp_cp0_excode),
-    // .jmp_cp0_ex(jmp_cp0_ex),
-    // .jmp_cp0_badvaddr(jmp_cp0_badvaddr),
-    // .id_is_movz(id_is_movz),
-    // .ex_is_movz(ex_is_movz),
     .out_rdata1(out_rdata1),
     .out_rdata2(out_rdata2),
     .dest(dest),
@@ -410,18 +402,15 @@ id_ex u_id_ex(
     .opcode(opcode),
     .rf_nwe(rf_nwe),
     .is_ram(is_ram),
-    .is_movz(is_movz),
     .hilo_we(hilo_we),
     .exe_stall(exe_stall),
     .hazard_stall(hazard_stall),
     .ie_mfc0_hazard_stall(ie_mfc0_hazard_stall),
     .im_mfc0_hazard_stall(im_mfc0_hazard_stall),
+    .int_div_stall(int_div_stall),
     .int_flush(int_flush),
     .cp0_ex(ide_cp0_ex),
     .cp0_excode(ide_cp0_excode),
-    // .jmp_cp0_ex(jmp_cp0_ex),
-    // .jmp_cp0_excode(jmp_cp0_excode),
-    // .jmp_cp0_badvaddr(jmp_cp0_badvaddr),
     .if_cp0_badvaddr(if_cp0_badvaddr),
     .cp0_we(cp0_we),
     .cp0_bd(cp0_bd),
@@ -441,7 +430,6 @@ id_ex u_id_ex(
     .id_opcode(id_opcode),
     .id_rf_nwe(id_rf_nwe),
     .id_is_ram(id_is_ram),
-    .id_is_movz(id_is_movz),
     .id_hilo_we(id_hilo_we),
     .id_ram_wen(id_ram_wen),
     .id_ram_sign(id_ram_sign),
@@ -476,7 +464,9 @@ execute u_execute(
     .zero(br),
     .stall(exe_stall),
     .exe_cp0_ex(exe_cp0_ex),
-    .exe_cp0_excode(exe_cp0_excode)
+    .exe_cp0_excode(exe_cp0_excode),
+    .cp0_tag(cp0_tag),
+    .div_finish(div_finish)
     // .rf_nwe(id_rf_nwe),
     // .id_rf_nwe(id_rf_nwe)
 );
@@ -487,10 +477,12 @@ ex_mem u_ex_mem(
     .id_pc(id_pc),
     .alu_out(alu_out),
     .hilo_out(hilo_out),
-    .br(br),
+    .div_finish(div_finish),
     .int_flush(int_flush),
+    .cp0_tag(cp0_tag),
     .exe_cp0_ex(exe_cp0_ex),
     .exe_cp0_excode(exe_cp0_excode),
+    .int_div_stall(int_div_stall),
     .memory_cp0_ex(memory_cp0_ex),
     .memory_cp0_excode(memory_cp0_excode),
     .memory_cp0_badvaddr(memory_cp0_badvaddr),
@@ -508,7 +500,6 @@ ex_mem u_ex_mem(
     .id_is_ram(id_is_ram),
     .id_ram_wen(id_ram_wen),
     .id_ram_sign(id_ram_sign),
-    .id_is_movz(id_is_movz),
     .id_opcode(id_opcode),
     .id_func(id_func),
     .exe_stall(exe_stall),
@@ -521,7 +512,6 @@ ex_mem u_ex_mem(
     .ex_ram_we(ex_ram_we),
     .ex_rf_nwe(ex_rf_nwe),
     .ex_is_ram(ex_is_ram),
-    .ex_is_movz(ex_is_movz),
     .ex_hilo_out(ex_hilo_out),
     .ex_opcode(ex_opcode),
     .ex_func(ex_func),
@@ -533,7 +523,8 @@ ex_mem u_ex_mem(
     .ex_cp0_we(ex_cp0_we),
     .ex_cp0_bd(ex_cp0_bd),
     .ex_cp0_addr(ex_cp0_addr),
-    .ex_cp0_eret_flush(ex_cp0_eret_flush)
+    .ex_cp0_eret_flush(ex_cp0_eret_flush),
+    .ex_cp0_tag(ex_cp0_tag)
 );
 
 memory u_memory(
@@ -561,6 +552,8 @@ mem_wb u_mem_wb(
     .resetn(resetn),
     .ex_pc(ex_pc),
     .ex_alu_out(ex_alu_out),
+    .div_finish(div_finish),
+    .int_div_stall(int_div_stall),
     .ram_out(ram_out),
     .ex_rdata1(ex_rdata1),
     .ex_rdata2(ex_rdata2),
@@ -577,9 +570,8 @@ mem_wb u_mem_wb(
     .ex_cp0_we(ex_cp0_we),
     .ex_cp0_bd(ex_cp0_bd),
     .ex_cp0_addr(ex_cp0_addr),
+    .ex_cp0_tag(ex_cp0_tag),
     .ex_cp0_eret_flush(ex_cp0_eret_flush),
-    // .ex_ram_wen(ex_ram_wen),
-    // .ex_ram_sign(ex_ram_sign),
     .mem_pc(mem_pc),
     .mem_alu_out(mem_alu_out),
     .mem_ram_out(mem_ram_out),
@@ -597,9 +589,8 @@ mem_wb u_mem_wb(
     .mem_cp0_we(mem_cp0_we),
     .mem_cp0_bd(mem_cp0_bd),
     .mem_cp0_addr(mem_cp0_addr),
+    .mem_cp0_tag(mem_cp0_tag),
     .mem_cp0_eret_flush(mem_cp0_eret_flush)
-    // .mem_ram_wen(mem_ram_wen),
-    // .mem_ram_sign(mem_ram_sign)
 );
 
 rf_mux u_rf_mux(
@@ -621,7 +612,9 @@ rf_mux u_rf_mux(
 cp0_reg u_cp0_reg(
     .clk(clk),
     .resetn(resetn),
+    .div_finish(div_finish),
     .eret_flush(mem_cp0_eret_flush),
+    .cp0_tag(mem_cp0_tag),
     .cp0_badvaddr(mem_cp0_badvaddr),
     .cp0_excode_t(mem_cp0_excode),
     .cp0_pc(mem_pc),
@@ -630,10 +623,11 @@ cp0_reg u_cp0_reg(
     .cp0_we(mem_cp0_we),
     .cp0_addr(mem_cp0_addr),
     .cp0_wdata(mem_rdata2),
-    .cp0_int(6'b0),
+    .cp0_int(ext_int),
     .cp0_rdata(cp0_rdata),
     .int_pc(int_pc),
-    .int_flush(int_flush)
+    .int_flush(int_flush),
+    .int_div_stall(int_div_stall)
 );
 
 assign data_sram_en    = 1'b1;

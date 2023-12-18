@@ -1,6 +1,8 @@
 module mem_wb(
     input                            clk,  // clock
     input                         resetn,  // resetn
+    input                     div_finish,
+    input                  int_div_stall,
     input       [5:0]          ex_opcode,
     input       [5:0]            ex_func,
     input       [31:0]             ex_pc,  // pc data from ex/mem seg reg
@@ -12,6 +14,7 @@ module mem_wb(
     input                      ex_rf_nwe,  // rd write enable from ex/mem seg reg
     input       [63:0]       ex_hilo_out,  // hilo out from ex/mem seg reg
     input       [4:0]              ex_rd,  // rd register addr from ex/mem seg reg
+    input                     ex_cp0_tag,
     input                      int_flush,
     input                      ex_cp0_ex,  
     input      [4:0]       ex_cp0_excode,  
@@ -37,7 +40,8 @@ module mem_wb(
     output reg                mem_cp0_we,
     output reg                mem_cp0_bd,
     output reg [4:0]        mem_cp0_addr,
-    output reg        mem_cp0_eret_flush
+    output reg        mem_cp0_eret_flush,
+    output reg               mem_cp0_tag
 );
 
 
@@ -60,6 +64,7 @@ initial begin
     mem_cp0_bd = 1'b0;
     mem_cp0_addr = 5'h0;
     mem_cp0_eret_flush = 1'b0;
+    mem_cp0_tag = 1'b0;
 end
 
 always @(posedge clk) begin
@@ -82,8 +87,9 @@ always @(posedge clk) begin
         mem_cp0_bd <= 1'b0;
         mem_cp0_addr <= 5'h0;
         mem_cp0_eret_flush <= 1'b0;
+        mem_cp0_tag <= 1'b0;
     end
-    else begin
+    else if(~int_div_stall) begin
         mem_pc <= ex_pc;
         mem_alu_out <= ex_alu_out;  
         mem_ram_out <= ram_out;     
@@ -102,6 +108,7 @@ always @(posedge clk) begin
         mem_cp0_bd <= ex_cp0_bd;
         mem_cp0_addr <= ex_cp0_addr;
         mem_cp0_eret_flush <= ex_cp0_eret_flush;
+        mem_cp0_tag <=  div_finish ? 1'b0 : ex_cp0_tag;
     end
 end
 

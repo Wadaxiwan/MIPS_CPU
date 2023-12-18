@@ -25,6 +25,8 @@ module cp0_reg(
     input                         clk,
     input                      resetn,
     input                  eret_flush,
+    input                     cp0_tag,
+    input                  div_finish,
     input   [31:0]       cp0_badvaddr,  // bad virtual address
     input   [31:0]             cp0_pc,  // pc of this instruction
     input   [4:0]        cp0_excode_t,  // exception code
@@ -36,7 +38,8 @@ module cp0_reg(
     input   [5:0]             cp0_int,
     output  [31:0]          cp0_rdata,
     output  [31:0]             int_pc,
-    output                  int_flush
+    output                  int_flush,
+    output              int_div_stall
 );
 
 wire [31:0]  status_rdata;
@@ -54,12 +57,13 @@ wire         mtc0_we;   // can write when cp0_we == 1 and cp0_ex == 0
 assign  cp0_ex = cp0_excode_t == `EX_ERET ? 1'b0 : cp0_ex_t;  // eret will not be seen as exception 
 assign  cp0_excode = cp0_excode_t == `EX_ERET ? 5'h0 : cp0_excode_t;  // eret will not be seen as exception
 
-assign int_flush = eret_flush | cp0_ex;  // flush when eret or exception (can be seen as the same in MIPS)
+assign int_flush = (~cp0_tag | div_finish) & (eret_flush | cp0_ex);  // flush when eret or exception (can be seen as the same in MIPS)
 assign int_pc = ({32{eret_flush}} & epc_rdata) |
                 ({32{cp0_ex}} & 32'hBFC00380);
 
 // @Breif: mtc0 inst write enable
 assign mtc0_we = cp0_we && ~cp0_ex;
+assign int_div_stall = (eret_flush | cp0_ex) & cp0_tag & ~div_finish;
 
 
 
@@ -101,6 +105,23 @@ reg [4:0]   cause_excode;  // r13 s0  read only interrupt code
 // @Warning: when exception pc is in branch delay slot, EPC will be set to the address of the branch instruction
 // @Warning: when status_exl == 1, EPC can not be update
 reg [31:0]  epc;        // r14 s0  read/write
+
+
+initial begin
+    badvaddr = 32'h0;
+    tick = 1'b0;
+    count = 32'h0;
+    compare = 32'h0;
+    status_im = 8'h0;
+    status_exl = 1'b0;
+    status_ie = 1'b0;
+    cause_bd = 1'b0;
+    cause_ti = 1'b0;
+    cause_ip = 8'h0;
+    cause_excode = 5'h0;
+    epc = 32'h0;
+end
+
 
 
 
